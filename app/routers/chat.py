@@ -1,6 +1,8 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
 
+from app.services.rag_service import answer_with_rag
+
 router = APIRouter()
 
 
@@ -48,7 +50,14 @@ def get_chat_session(session_id: int):
 
 @router.post("/sessions/{session_id}/messages", summary="챗봇 메시지 전송")
 def send_chat_message(session_id: int, request: ChatMessageRequest):
+    result = answer_with_rag(
+        message=request.message,
+        report_id=str(request.report_id) if request.report_id is not None else None
+    )
+
     return {
         "session_id": session_id,
-        "answer": "리포트 결과를 바탕으로 볼 때, 아이에게 충분한 안정감을 주는 대화가 필요합니다."
+        "answer": result["answer"],
+        "sources": result["sources"],
+        "safety_notice": result["safety_notice"]
     }

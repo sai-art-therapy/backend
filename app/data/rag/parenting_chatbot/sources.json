@@ -1,0 +1,118 @@
+[
+  {
+    "source_id": "src_cdc_001",
+    "organization": "CDC",
+    "title": "Positive Parenting Tips for Healthy Child Development - Preschoolers ages 3-5",
+    "source_url": "https://stacks.cdc.gov/view/cdc/155270",
+    "file_type": "Fact sheet / PDF",
+    "license": "Public Domain",
+    "source_verification": "verified",
+    "usage_decision": "사용 가능",
+    "usable_topics": [
+      "긍정적 양육",
+      "유아기 발달",
+      "부모-자녀 상호작용",
+      "칭찬과 격려",
+      "생활습관",
+      "안전"
+    ],
+    "notes": "원문 복사 없이 부모 상담용 행동 가이드로 요약·재구성"
+  },
+  {
+    "source_id": "src_cdc_002",
+    "organization": "CDC",
+    "title": "Positive Parenting Tips for Healthy Child Development - Middle Childhood ages 9-11",
+    "source_url": "https://stacks.cdc.gov/view/cdc/155269",
+    "file_type": "Fact sheet / PDF",
+    "license": "Public Domain",
+    "source_verification": "verified",
+    "usage_decision": "사용 가능",
+    "usable_topics": [
+      "긍정적 양육",
+      "초등 고학년 발달",
+      "또래관계",
+      "자존감",
+      "부모 대화",
+      "책임감",
+      "규칙 설정"
+    ],
+    "notes": "원문 복사 없이 부모 상담용 행동 가이드로 요약·재구성"
+  },
+  {
+    "source_id": "src_cdc_003",
+    "organization": "CDC",
+    "title": "Positive Parenting Tips for Healthy Child Development: Middle Childhood (6-8 Years of Age)",
+    "source_url": "https://stacks.cdc.gov/view/cdc/155268",
+    "file_type": "Fact sheet / PDF",
+    "license": "Public Domain",
+    "source_verification": "verified",
+    "usage_decision": "사용 가능",
+    "usable_topics": [
+      "긍정적 양육",
+      "초등 저학년 발달",
+      "부모-자녀 관계",
+      "규칙 설정",
+      "또래관계",
+      "자존감",
+      "생활습관"
+    ],
+    "notes": "원문 복사 없이 부모 상담용 행동 가이드로 요약·재구성"
+  },
+  {
+    "source_id": "src_kr_001",
+    "organization": "부산광역시 아동보호종합센터",
+    "title": "(부모교육-2021.9.23.) 좋은 부모 되는 방법 ppt",
+    "source_url": "https://www.busan.go.kr/adong/cccaler05/1505463",
+    "file_type": "PPT",
+    "license": "공공누리 제1유형: 출처표시",
+    "source_verification": "verified",
+    "usage_decision": "사용 가능: 출처 표시 후 요약·재구성",
+    "usable_topics": [
+      "부모 역할",
+      "양육 태도",
+      "부모-자녀 관계",
+      "대화법",
+      "훈육 기초"
+    ],
+    "notes": "원문을 그대로 복사하지 않고 RAG용 부모 상담 지식으로 요약·재구성"
+  },
+  {
+    "source_id": "src_kr_002",
+    "organization": "부산광역시 아동보호종합센터",
+    "title": "부모와 자녀, 모두가 행복해지는 긍정양육 리플렛",
+    "source_url": "https://www.busan.go.kr/adong/cccaler05/1541376",
+    "file_type": "PDF 리플렛",
+    "license": "공공누리 제1유형: 출처표시",
+    "source_verification": "verified",
+    "usage_decision": "사용 가능: 출처 표시 후 요약·재구성",
+    "usable_topics": [
+      "긍정양육",
+      "체벌 없는 양육",
+      "부모-자녀 관계",
+      "감정 존중",
+      "훈육 기초",
+      "부모의 대화 태도"
+    ],
+    "notes": "원문을 그대로 복사하지 않고 RAG용 부모 상담 지식으로 요약·재구성"
+  },
+  {
+    "source_id": "src_kr_003",
+    "organization": "부산광역시 아동보호종합센터",
+    "title": "아동학대 예방 리플렛(아동보호종합센터)",
+    "source_url": "https://www.busan.go.kr/adong/cccaler05/1479434",
+    "file_type": "PDF 리플렛",
+    "license": "공공누리 제1유형: 출처표시",
+    "source_verification": "verified",
+    "usage_decision": "사용 가능: 출처 표시 후 요약·재구성",
+    "usable_topics": [
+      "아동학대 예방",
+      "아동학대 의심 신호",
+      "위험 신호",
+      "신고 절차",
+      "신고의무자",
+      "전문기관 연계",
+      "피해아동 보호 지원"
+    ],
+    "notes": "일반 육아 방법보다는 위험 신호, 아동학대 의심, 신고 및 전문기관 연계 항목의 보조 출처로 활용"
+  }
+]
