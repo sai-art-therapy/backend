@@ -1,1 +1,2527 @@
-[]
+{
+  "meta": {
+    "version": "2.0",
+    "format": "RAG_chunks",
+    "test_format": "KHTP (집·나무·사람 1장)",
+    "total_chunks": 70,
+    "source_file": "sources_1.json",
+    "sections": [
+      "case_example",
+      "combined_features",
+      "cultural",
+      "developmental",
+      "framework",
+      "house",
+      "khtp_relationships",
+      "meta",
+      "pdi",
+      "person",
+      "psychological_signal",
+      "report",
+      "structural",
+      "tree"
+    ],
+    "id_format": "htp_NNN",
+    "note": "HTP 검사 기반 KHTP 1장 방식으로 구성. 소스 ID는 sources.json 참조."
+  },
+  "chunks": [
+    {
+      "id": "htp_001",
+      "section": "meta",
+      "subsection": "usage_rules",
+      "title": "사용 규칙 및 주의사항",
+      "content": {
+        "purpose": "KHTP 검사 결과 리포트 생성용 RAG 지식데이터 (집·나무·사람 1장 방식)",
+        "rules": [
+          "단발성 리포트 생성용입니다. 대화형 챗봇 용도가 아닙니다.",
+          "그림 특징만으로 심리 상태를 단정하지 않습니다.",
+          "전문가 해석을 대체하지 않습니다.",
+          "그림 분석, PDI 응답, 생활 맥락을 함께 고려합니다.",
+          "미취학 아동(6세 이하)은 발달적 미분화 특성을 반드시 감안합니다.",
+          "한국 문화·환경적 맥락(아파트, 굴뚝 없음 등)을 외국 기준과 구분합니다."
+        ],
+        "age_caution": "만 4~6세 미취학 아동: 목 생략, 뿌리·가지 생략, 투시화 등을 병리로 해석하지 않습니다."
+      },
+      "tags": [
+        "사용규칙",
+        "주의사항",
+        "면책"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_002",
+      "section": "meta",
+      "subsection": "input_schema",
+      "title": "입력 스키마 (이름·나이·성별)",
+      "content": {
+        "required": [
+          {
+            "field": "image",
+            "type": "file",
+            "desc": "KHTP 그림 파일 (집·나무·사람 1장)"
+          },
+          {
+            "field": "name",
+            "type": "string",
+            "desc": "아동 이름. 리포트 헤더 및 PDI 호칭 사용."
+          },
+          {
+            "field": "age",
+            "type": "integer",
+            "desc": "아동 만 나이. 발달단계 자동 매핑에 사용."
+          },
+          {
+            "field": "gender",
+            "type": "string",
+            "enum": [
+              "남",
+              "여"
+            ],
+            "desc": "성별. 사람 그림 성별 해석에 사용."
+          }
+        ],
+        "optional": [
+          {
+            "field": "drawing_time_seconds",
+            "type": "integer",
+            "desc": "그림 완성 소요 시간(초). 검사자 측정."
+          },
+          {
+            "field": "behavior_notes",
+            "type": "string",
+            "desc": "검사 중 행동 관찰 메모."
+          },
+          {
+            "field": "family_context",
+            "type": "string",
+            "desc": "가족 구성·생활 맥락. PDI 해석 보완에 사용."
+          }
+        ],
+        "age_to_stage": [
+          {
+            "range": [
+              2,
+              3
+            ],
+            "stage": "난화기",
+            "caution": "미분화 최대. 내용 분석 최소화."
+          },
+          {
+            "range": [
+              4,
+              6
+            ],
+            "stage": "전도식기",
+            "caution": "투시화·목·뿌리 생략 발달적 정상."
+          },
+          {
+            "range": [
+              7,
+              7
+            ],
+            "stage": "도식기_초기",
+            "caution": "기저선 등장. 절단 해석 시 발달 감안."
+          },
+          {
+            "range": [
+              8,
+              9
+            ],
+            "stage": "도식기",
+            "caution": "사실 표현 시도. 구조 분석 가중치 높임."
+          },
+          {
+            "range": [
+              10,
+              99
+            ],
+            "stage": "사실기_초기",
+            "caution": "미분화 나타나면 퇴행 가능성 검토."
+          }
+        ],
+        "gender_rules": [
+          {
+            "cond": "피검자 성별 == 먼저 그린 인물 성별",
+            "age_min": 7,
+            "meaning": "정상"
+          },
+          {
+            "cond": "피검자 성별 != 먼저 그린 인물 성별",
+            "meaning": "성 정체성 불안 또는 이성 성숙도 높음 가능성. 맥락 필수."
+          }
+        ]
+      },
+      "tags": [
+        "입력스키마",
+        "나이",
+        "성별",
+        "발달단계"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_003",
+      "section": "framework",
+      "subsection": "interpretation_levels",
+      "title": "HTP 3단계 해석 체계",
+      "content": {
+        "overview": "KHTP 해석은 전체적 분석 → 구조적 분석 → 내용적 분석 순으로 진행하며, PDI 응답과 생활 맥락을 반드시 함께 고려합니다.",
+        "levels": [
+          {
+            "level": "전체적 분석",
+            "desc": "1장 구도 전반의 조화·안정감, 세 요소 배치 관계, 이상한 점을 직관적으로 파악."
+          },
+          {
+            "level": "구조적 분석",
+            "desc": "크기·위치·필압·선질·순서·대칭·지우기 등 형식적 요소를 하나씩 고려."
+          },
+          {
+            "level": "내용적 분석",
+            "desc": "무엇을 그렸는가를 다루며 강조·이상한 부분 중심. PDI 응답과 연결."
+          }
+        ],
+        "blind_analysis_warning": "그림만 단독으로 분석하는 '맹분석'은 위험합니다. PDI·행동 관찰·생활 환경 정보와 종합하십시오."
+      },
+      "tags": [
+        "해석단계",
+        "전체분석",
+        "구조분석",
+        "내용분석"
+      ],
+      "source_ids": [
+        "src_001",
+        "src_002",
+        "src_003"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_004",
+      "section": "structural",
+      "subsection": "drawing_time",
+      "title": "소요 시간 해석",
+      "content": {
+        "description": "그림 완성 소요 시간은 피검자의 갈등·충동성·완벽주의 성향을 시사합니다.",
+        "interpretations": [
+          {
+            "condition": "2분 이하",
+            "possible_meaning": "피검자에게 특별한 의미 또는 갈등이 있을 수 있음"
+          },
+          {
+            "condition": "30분 이상",
+            "possible_meaning": "강박적 경향, 완벽 추구 성향"
+          },
+          {
+            "condition": "지시 후 30초 이상 시작 안 함",
+            "possible_meaning": "해당 과제에 강한 갈등 또는 저항"
+          },
+          {
+            "condition": "한 부분을 오랜 시간 그림",
+            "possible_meaning": "완벽주의, 강박적 경향"
+          },
+          {
+            "condition": "일반적 소요 시간",
+            "possible_meaning": "그림 한 장당 약 10분이 표준"
+          }
+        ],
+        "age_note": "아동의 경우 평균 5~10분 이내 완성이 일반적입니다."
+      },
+      "tags": [
+        "소요시간",
+        "충동성",
+        "완벽주의",
+        "강박"
+      ],
+      "source_ids": [
+        "src_002",
+        "src_003"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_005",
+      "section": "structural",
+      "subsection": "drawing_order",
+      "title": "그리는 순서 해석",
+      "content": {
+        "description": "그리는 순서는 내적 갈등과 심리적 방어를 반영합니다.",
+        "standard_order": {
+          "house": "지붕 → 벽 → 문 → 창문",
+          "tree": "줄기 → 가지 → 잎",
+          "person": "얼굴 → 눈·코·입 → 목 → 몸 → 팔 → 다리"
+        },
+        "interpretations": [
+          {
+            "condition": "얼굴 내부를 먼저 그리고 윤곽을 나중에",
+            "possible_meaning": "대인관계 문제, 정서적 접촉 기피"
+          },
+          {
+            "condition": "사람 얼굴을 맨 나중에",
+            "possible_meaning": "대인관계 문제"
+          },
+          {
+            "condition": "한 부분을 반복적으로 수정",
+            "possible_meaning": "그 부분이 상징하는 영역에서의 갈등"
+          },
+          {
+            "condition": "집→나무→사람 전환 시 불안 징후",
+            "possible_meaning": "대인관계 영역의 어려움·갈등·결핍"
+          }
+        ]
+      },
+      "tags": [
+        "그리는순서",
+        "심리방어",
+        "대인관계"
+      ],
+      "source_ids": [
+        "src_002",
+        "src_003"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_006",
+      "section": "structural",
+      "subsection": "size",
+      "title": "그림 크기 해석",
+      "content": {
+        "standard": "A4 기준 사람 그림 약 20cm, 종이의 2/3 공간 사용이 일반적",
+        "interpretations": [
+          {
+            "condition": "작은 그림",
+            "possible_meaning": "환경 부적응감, 무력감, 열등감, 불안감, 자신감 부족"
+          },
+          {
+            "condition": "종이 위쪽에 아주 작게",
+            "possible_meaning": "에너지 수준 저하, 자기통찰·자존감 부족, 낙천적 경향 동반 가능"
+          },
+          {
+            "condition": "지나치게 큰 그림",
+            "possible_meaning": "환경에 대한 적의·공격성, 긴장, 조급함"
+          },
+          {
+            "condition": "종이 크기를 벗어남",
+            "possible_meaning": "환경 압박감이 매우 큼, 과잉보상 욕구"
+          },
+          {
+            "condition": "어린 아동의 큰 그림",
+            "possible_meaning": "주로 공격성·인지적 미성숙 반영"
+          }
+        ],
+        "age_note": "나이 어린 아동이 크게 그리는 것은 공격성보다 인지적 미성숙을 반영하는 경우가 많습니다."
+      },
+      "tags": [
+        "크기",
+        "자존감",
+        "에너지",
+        "공격성",
+        "위축"
+      ],
+      "source_ids": [
+        "src_002",
+        "src_003"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_007",
+      "section": "structural",
+      "subsection": "position",
+      "title": "그림 위치 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "중앙",
+            "possible_meaning": "안정감 (가장 일반적). 정중앙은 불안전감·완고함 시사 가능"
+          },
+          {
+            "condition": "왼쪽 치우침",
+            "possible_meaning": "자의식 강함, 내향적·과거 퇴행적·공상적 경향, 여성적 경향성"
+          },
+          {
+            "condition": "오른쪽 치우침",
+            "possible_meaning": "지적 만족 선호, 감정 이성적 통제 경향"
+          },
+          {
+            "condition": "아래쪽",
+            "possible_meaning": "내면의 불안정감·위화감, 우울한 기분, 현실 지향적이지만 패배감 동반 가능"
+          },
+          {
+            "condition": "위쪽에 작게",
+            "possible_meaning": "에너지 수준 낮음, 자존감·자신감 부족"
+          }
+        ]
+      },
+      "tags": [
+        "위치",
+        "좌우편향",
+        "내향성",
+        "공상"
+      ],
+      "source_ids": [
+        "src_003"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_008",
+      "section": "structural",
+      "subsection": "line_pressure",
+      "title": "필압(선 강도) 해석",
+      "content": {
+        "description": "필압(연필의 힘)은 에너지 수준, 긴장도, 공격성, 충동성을 반영합니다.",
+        "interpretations": [
+          {
+            "condition": "강약 변화 적당",
+            "possible_meaning": "유연한 태도, 환경 적응 양호"
+          },
+          {
+            "condition": "전체적으로 강한 선",
+            "possible_meaning": "긴장, 에너지 과잉"
+          },
+          {
+            "condition": "특정 부분만 진하게",
+            "possible_meaning": "그 부분이 상징하는 것에 대한 억압·고착"
+          },
+          {
+            "condition": "매우 약한 선",
+            "possible_meaning": "적응 어려움, 두려움·불안정감, 자신감 부족, 우울·폐쇄적 경향"
+          },
+          {
+            "condition": "윤곽만 진하고 내부는 약함",
+            "possible_meaning": "성격 균형 유지 곤란"
+          }
+        ],
+        "age_note": "미취학 아동은 손의 힘 발달이 미숙하여 필압의 강약을 조절하기 어렵습니다. 필압만으로 지능 저하나 억제를 단정하지 않도록 주의하십시오."
+      },
+      "tags": [
+        "필압",
+        "긴장",
+        "에너지",
+        "불안",
+        "우울"
+      ],
+      "source_ids": [
+        "src_002",
+        "src_003"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_009",
+      "section": "structural",
+      "subsection": "line_type",
+      "title": "선 모양 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "긴 선",
+            "possible_meaning": "자기 통제 적절한 편"
+          },
+          {
+            "condition": "짧은 선",
+            "possible_meaning": "과도한 흥분 경향, 충동적"
+          },
+          {
+            "condition": "직선",
+            "possible_meaning": "자기주장적, 민첩, 결단력"
+          },
+          {
+            "condition": "톱니 모양",
+            "possible_meaning": "적대적 감정"
+          },
+          {
+            "condition": "둥근 선",
+            "possible_meaning": "의존적·여성적 경향"
+          },
+          {
+            "condition": "수평선 많음",
+            "possible_meaning": "약함, 여성적·공상적 경향"
+          },
+          {
+            "condition": "수직선 많음",
+            "possible_meaning": "결단력, 활동성, 자기주장, 남성적·과잉활동 경향"
+          },
+          {
+            "condition": "일정하고 망설임 없음",
+            "possible_meaning": "목표 설정 가능, 인내심 있는 안정형"
+          },
+          {
+            "condition": "방향 일정하지 않음",
+            "possible_meaning": "자기 확신 없음, 불안정한 편"
+          }
+        ]
+      },
+      "tags": [
+        "선모양",
+        "충동성",
+        "결단력",
+        "의존성"
+      ],
+      "source_ids": [
+        "src_003"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_010",
+      "section": "structural",
+      "subsection": "erasing",
+      "title": "지우기 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "적당한 지우개 사용",
+            "possible_meaning": "가소성·순응성 있음"
+          },
+          {
+            "condition": "과도한 지우기",
+            "possible_meaning": "내적 갈등 시사"
+          },
+          {
+            "condition": "지우고 더 나아짐",
+            "possible_meaning": "긍정적"
+          },
+          {
+            "condition": "지우고 더 나빠짐",
+            "possible_meaning": "기질적 문제 가능성"
+          },
+          {
+            "condition": "특정 부분 반복 수정",
+            "possible_meaning": "그 부분이 상징하는 것에 대한 갈등"
+          }
+        ]
+      },
+      "tags": [
+        "지우기",
+        "내적갈등",
+        "강박"
+      ],
+      "source_ids": [
+        "src_002",
+        "src_003"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_011",
+      "section": "structural",
+      "subsection": "orientation",
+      "title": "그림 방향 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "정면 몸에 옆 얼굴",
+            "possible_meaning": "사회적 어려움, 죄의식, 정직성 결여 가능"
+          },
+          {
+            "condition": "완전히 옆면 (한쪽 팔·다리만 보임)",
+            "possible_meaning": "환경 직면 두려움, 자기폐쇄적, 친근한 것에만 접촉하려는 경향"
+          }
+        ]
+      },
+      "tags": [
+        "방향",
+        "측면",
+        "사회적불안",
+        "자기방어"
+      ],
+      "source_ids": [
+        "src_003"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_012",
+      "section": "structural",
+      "subsection": "symmetry",
+      "title": "대칭성 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "대칭 크게 부족",
+            "possible_meaning": "정신병적 상태나 뇌기능 장애 가능성"
+          },
+          {
+            "condition": "경직된 대칭",
+            "possible_meaning": "우울한 경향"
+          },
+          {
+            "condition": "자로 잰 듯 정확한 대칭",
+            "possible_meaning": "신체 부조화 두려움, 죄책감, 자기통제 강함"
+          }
+        ]
+      },
+      "tags": [
+        "대칭",
+        "우울",
+        "강박",
+        "자기통제"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_013",
+      "section": "structural",
+      "subsection": "detailing",
+      "title": "세부묘사 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "특정 부분 과도하게 상세",
+            "possible_meaning": "그 부분이 상징하는 측면에 내적 갈등"
+          },
+          {
+            "condition": "필수 요소 생략 (지능 정상인 경우)",
+            "possible_meaning": "정서적 혼란 또는 지적 붕괴 시작 가능"
+          },
+          {
+            "condition": "전반적으로 지나치게 상세",
+            "possible_meaning": "강박적 경향, 중요/사소 구별 못함, 과도한 억제"
+          }
+        ]
+      },
+      "tags": [
+        "세부묘사",
+        "강박",
+        "정서혼란"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_014",
+      "section": "structural",
+      "subsection": "cutoff",
+      "title": "절단 해석",
+      "content": {
+        "description": "종이 끝에서 그림이 잘리는 현상입니다.",
+        "interpretations": [
+          {
+            "condition": "하단 절단",
+            "possible_meaning": "강한 충동성 존재, 성격 통합 유지 위한 억제"
+          },
+          {
+            "condition": "상단 절단 (나무 외)",
+            "possible_meaning": "사고 중심, 지적 성취욕 강함, 현실에서 얻지 못하는 만족 추구"
+          },
+          {
+            "condition": "왼쪽 절단",
+            "possible_meaning": "미래 두려움, 과거 고착, 의존적·강박적 반복 경향"
+          },
+          {
+            "condition": "오른쪽 절단",
+            "possible_meaning": "과거→미래 도피 욕구, 감정 표현 회피, 강한 행동 통제"
+          }
+        ],
+        "age_note": "미취학 아동의 집·나무 그림 일부 절단은 기저선(땅선)을 아직 표현하지 못하는 발달적 특성일 수 있습니다. 사람 그림 하단 절단은 해석에 의미를 두되, 집·나무의 절단은 신중하게 판단하십시오."
+      },
+      "tags": [
+        "절단",
+        "충동성",
+        "과거고착",
+        "미래회피"
+      ],
+      "source_ids": [
+        "src_003"
+      ],
+      "test_format": "KHTP",
+      "age_filter": {
+        "caution": "미취학 아동 집·나무 절단은 기저선 미발달 반영 가능. 사람 그림에만 우선 적용."
+      }
+    },
+    {
+      "id": "htp_015",
+      "section": "structural",
+      "subsection": "transparency",
+      "title": "투시화 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "성인의 투시화 (내부·배꼽 등 보임)",
+            "possible_meaning": "판단력 결함, 성적 갈등 가능. 정신분열증 병적 징조 가능"
+          },
+          {
+            "condition": "미취학 아동의 투시화",
+            "possible_meaning": "발달적으로 정상적인 미분화 현상. 병리 해석 불필요."
+          }
+        ]
+      },
+      "tags": [
+        "투시화",
+        "판단력결함",
+        "미분화"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP",
+      "age_filter": {
+        "caution": "미취학 아동 투시화는 발달적 정상. 병리 해석 불필요."
+      }
+    },
+    {
+      "id": "htp_016",
+      "section": "structural",
+      "subsection": "additional_elements",
+      "title": "부가적 그림 요소 해석",
+      "content": {
+        "description": "제시 그림 외에 추가로 그린 사물의 상징적 의미를 고려합니다.",
+        "interpretations": [
+          {
+            "element": "해(태양)",
+            "possible_meaning": "따뜻함·애정에 대한 욕구. 아동 발달적으로는 일반적 표현이나, 지나치게 강조 시 애정 좌절감 시사"
+          },
+          {
+            "element": "궂은 날씨",
+            "possible_meaning": "환경을 적의적·압박적으로 지각"
+          }
+        ]
+      },
+      "tags": [
+        "태양",
+        "날씨",
+        "부가요소",
+        "애정욕구"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_017",
+      "section": "house",
+      "subsection": "symbolic_meaning",
+      "title": "집 그림 상징 의미",
+      "content": {
+        "symbolic_meaning": "피검자가 성장한 가족 상황을 반영합니다. 가족관계, 가정생활, 과거·현재·미래 가정에 대한 소망을 나타냅니다."
+      },
+      "tags": [
+        "집",
+        "가족관계",
+        "가정생활",
+        "상징"
+      ],
+      "source_ids": [
+        "src_001",
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_018",
+      "section": "house",
+      "subsection": "door",
+      "title": "집 - door 해석",
+      "content": {
+        "description": "집과 외부 세계를 연결하는 통로. 타인과의 접촉 허용 정도, 자기 공개 수준, 친밀 관계에 대한 불안·거부감을 반영합니다.",
+        "interpretations": [
+          {
+            "condition": "문 없음",
+            "possible_meaning": "친밀 관계에 대한 강한 거부감 또는 고립감"
+          },
+          {
+            "condition": "문이 잠겨 있거나 격자무늬",
+            "possible_meaning": "자신을 드러내기 꺼림, 방어적 태도"
+          },
+          {
+            "condition": "열린 문",
+            "possible_meaning": "타인에게 개방적, 의존 욕구 가능"
+          }
+        ]
+      },
+      "tags": [
+        "집",
+        "문",
+        "대인관계",
+        "자기공개"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_019",
+      "section": "house",
+      "subsection": "window",
+      "title": "집 - window 해석",
+      "content": {
+        "description": "세상을 내다보고 타인이 들여다보는 통로. 주관적 경험·상호작용 능력에 대한 자기 감정 반영.",
+        "interpretations": [
+          {
+            "condition": "창문 많음",
+            "possible_meaning": "타인에게 관심·인정받고 싶은 욕구"
+          },
+          {
+            "condition": "창문 없음",
+            "possible_meaning": "친구관계 위축 가능, 대인 접촉 회피"
+          },
+          {
+            "condition": "격자무늬 창문",
+            "possible_meaning": "자신을 감추고 싶음, 가정을 답답하게 느낌"
+          },
+          {
+            "condition": "창문이 지붕에 위치",
+            "possible_meaning": "자신의 모습 드러내기 꺼림, 대인관계 불안감"
+          },
+          {
+            "condition": "커튼·화분으로 많이 가림",
+            "possible_meaning": "자기 노출 회피"
+          }
+        ]
+      },
+      "tags": [
+        "집",
+        "창문",
+        "인정욕구",
+        "대인접촉"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_020",
+      "section": "house",
+      "subsection": "wall",
+      "title": "집 - wall 해석",
+      "content": {
+        "description": "집의 견고함, 자아 통제력과 강도를 반영합니다.",
+        "interpretations": [
+          {
+            "condition": "벽 선이 약하거나 불연속적",
+            "possible_meaning": "자아 통제력 부족, 불안정"
+          },
+          {
+            "condition": "벽이 잘림",
+            "possible_meaning": "충동적 성향, 자기보호 약화"
+          }
+        ]
+      },
+      "tags": [
+        "집",
+        "벽",
+        "자아통제력"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_021",
+      "section": "house",
+      "subsection": "chimney",
+      "title": "집 - chimney 해석",
+      "content": {
+        "description": "외국에서는 굴뚝이 일반적이나, 한국 도시(특히 아파트) 환경에서는 굴뚝이 없는 것이 문화적·환경적으로 자연스럽습니다.",
+        "korea_note": "한국 아동, 특히 서울 아파트 거주 아동이 굴뚝을 그리지 않은 것에 대해 '애정 좌절' 등 외국 임상 기준을 그대로 적용하지 않도록 주의하십시오.",
+        "interpretations": [
+          {
+            "condition": "굴뚝 있음 (외국 문헌 기준)",
+            "possible_meaning": "따뜻함 욕구, 공상 경향 가능"
+          },
+          {
+            "condition": "굴뚝 없음 (한국 아동)",
+            "possible_meaning": "문화적·환경적 특성으로 특별한 병리 의미를 부여하지 않음"
+          }
+        ]
+      },
+      "tags": [
+        "집",
+        "굴뚝",
+        "한국문화맥락"
+      ],
+      "source_ids": [
+        "src_001",
+        "src_003"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_022",
+      "section": "house",
+      "subsection": "roof",
+      "title": "집 - roof 해석",
+      "content": {
+        "description": "내적 인지과정(공상, 기억, 생각)과 연관됩니다.",
+        "interpretations": [
+          {
+            "condition": "크게 그린 지붕",
+            "possible_meaning": "내적 인지활동 강조, 대인관계 좌절로 공상에 몰두 경향"
+          },
+          {
+            "condition": "지붕 없음 (한국 아파트 아동)",
+            "possible_meaning": "문화·환경적 특성 반영 가능. 정상 학습·적응 중인 경우 병리 단정 불가."
+          },
+          {
+            "condition": "지붕만 진한 선으로 강조",
+            "possible_meaning": "불안감, 자신감 부족"
+          }
+        ],
+        "korea_note": "한국 아동(특히 아파트 거주)이 지붕을 그리지 않는 것은 문화·환경적 현상일 수 있습니다. 외국 임상 기준('사고장애 가능성 높음')을 무비판적으로 적용하지 마십시오."
+      },
+      "tags": [
+        "집",
+        "지붕",
+        "공상",
+        "인지과정"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_023",
+      "section": "house",
+      "subsection": "ground_line",
+      "title": "집 - ground_line 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "집이 땅에 닿아 있음",
+            "possible_meaning": "현실 접촉·안정성"
+          },
+          {
+            "condition": "공중에 떠 있는 집",
+            "possible_meaning": "현실 이탈, 공상 몰입 (성인 기준)"
+          }
+        ]
+      },
+      "tags": [
+        "집",
+        "지면선",
+        "현실접촉"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_024",
+      "section": "house",
+      "subsection": "additional_objects",
+      "title": "집 - additional_objects 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "잔디·나무 적당히 그림",
+            "possible_meaning": "내적 생동감·에너지"
+          },
+          {
+            "condition": "나무가 집 지붕을 덮을 만큼 큼",
+            "possible_meaning": "강력한 부모 자기대상 경험"
+          },
+          {
+            "condition": "울타리",
+            "possible_meaning": "경계 욕구, 방어"
+          }
+        ]
+      },
+      "tags": [
+        "집",
+        "부가사물",
+        "울타리",
+        "나무"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_025",
+      "section": "tree",
+      "subsection": "symbolic_meaning",
+      "title": "나무 그림 상징 의미",
+      "content": {
+        "symbolic_meaning": "기본적인 자기상(self-image)을 반영합니다. 기둥은 내적 자아강도, 가지는 환경에서 만족을 구하는 능력, 전체 조화는 내적 균형감을 나타냅니다."
+      },
+      "tags": [
+        "나무",
+        "자기상",
+        "자아강도",
+        "상징"
+      ],
+      "source_ids": [
+        "src_001",
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_026",
+      "section": "tree",
+      "subsection": "trunk",
+      "title": "나무 - trunk 해석",
+      "content": {
+        "description": "성격구조의 견고함, 자기 내면화된 힘을 상징합니다.",
+        "interpretations": [
+          {
+            "condition": "기둥에 상처·옹이",
+            "possible_meaning": "성장 과정의 외상 경험, 자아의 상처"
+          },
+          {
+            "condition": "옹이가 한쪽 면 → 반대쪽 관통",
+            "possible_meaning": "심각한 자아 손상감, 외상적 사건 가능"
+          },
+          {
+            "condition": "옹이 안에 동물",
+            "possible_meaning": "위축된 모습을 숨길 안전한 장소 소망"
+          }
+        ]
+      },
+      "tags": [
+        "나무",
+        "기둥",
+        "자아강도",
+        "외상"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_027",
+      "section": "tree",
+      "subsection": "roots",
+      "title": "나무 - roots 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "뿌리 없음",
+            "possible_meaning": "현실 속 자기 자신에 대한 불안정감·자신 없음 (임상 기준)"
+          },
+          {
+            "condition": "뿌리 없음 (미취학 아동)",
+            "possible_meaning": "그림 발달상 정상적 미성숙. 병리 해석 불필요."
+          }
+        ],
+        "age_note": "미취학 아동은 나무의 뿌리를 구체적으로 묘사하는 발달 단계에 이르지 않은 경우가 많습니다. 뿌리 부재를 불안정감으로 단정하지 마십시오."
+      },
+      "tags": [
+        "나무",
+        "뿌리",
+        "현실기반",
+        "불안정"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP",
+      "age_filter": {
+        "caution": "미취학 아동의 뿌리·가지 생략은 발달적 미분화 현상 가능."
+      }
+    },
+    {
+      "id": "htp_028",
+      "section": "tree",
+      "subsection": "branches",
+      "title": "나무 - branches 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "가지 없음",
+            "possible_meaning": "세상과의 상호작용에서 강한 억제 (임상 기준)"
+          },
+          {
+            "condition": "가지 없음 (미취학 아동)",
+            "possible_meaning": "발달적 미분화 현상으로 병리 해석 불필요"
+          },
+          {
+            "condition": "가지가 환경 만족을 추구하는 모습",
+            "possible_meaning": "성취 소망, 노력하는 태도"
+          }
+        ]
+      },
+      "tags": [
+        "나무",
+        "가지",
+        "환경적응",
+        "상호작용"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP",
+      "age_filter": {
+        "caution": "미취학 아동의 뿌리·가지 생략은 발달적 미분화 현상 가능."
+      }
+    },
+    {
+      "id": "htp_029",
+      "section": "tree",
+      "subsection": "dead_tree",
+      "title": "나무 - dead_tree 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "죽은 나무",
+            "possible_meaning": "상당한 내적 갈등, 정신병리적 특성 가능. PDI에서 이유를 반드시 확인."
+          }
+        ]
+      },
+      "tags": [
+        "나무",
+        "죽은나무",
+        "내적갈등"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_030",
+      "section": "tree",
+      "subsection": "balloon_canopy",
+      "title": "나무 - balloon_canopy 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "풍선 모양 수관 (하나로 이어진)",
+            "possible_meaning": "저항적·부정적 태도를 보이는 아동에게 가끔 나타남. 또는 위축·우울한 아동이 아주 작게 그리기도 함."
+          }
+        ]
+      },
+      "tags": [
+        "나무",
+        "풍선수관",
+        "저항",
+        "우울"
+      ],
+      "source_ids": [
+        "src_003"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_031",
+      "section": "tree",
+      "subsection": "tree_age",
+      "title": "나무 - tree_age 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "자신보다 어린 나이의 나무",
+            "possible_meaning": "매우 미성숙한 상태"
+          },
+          {
+            "condition": "너무 나이 많은 나무",
+            "possible_meaning": "내적 미성숙함에 대한 과잉보상"
+          }
+        ]
+      },
+      "tags": [
+        "나무",
+        "나무나이",
+        "성숙도",
+        "과잉보상"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_032",
+      "section": "person",
+      "subsection": "symbolic_meaning",
+      "title": "사람 그림 상징 의미",
+      "content": {
+        "symbolic_meaning": "의식적 수준에서 자기개념, 자기표상, 자기에 대한 태도·감정이 투사됩니다. 나무보다 의식적이며, 자기 또는 중요한 타인에 대한 인식을 반영합니다.",
+        "appropriate_drawing": "전체 균형, 신체 부위 완성, 적당한 의복, 편안한 자세나 활동 중인 모습. 7세 이상은 같은 성별 먼저 그리고, 남녀 키가 비슷하거나 남성이 약간 큰 것이 바람직.",
+        "gender_note": "여성 피검자가 남성을 먼저 그리는 경우: 성 정체성 불안, 열등감, 남성을 향한 수동·순종적 태도 가능. 단, 이성에 대한 성숙도가 또래보다 높은 경우도 있으므로 생활 맥락과 함께 해석."
+      },
+      "tags": [
+        "사람",
+        "자기개념",
+        "자기표상",
+        "상징"
+      ],
+      "source_ids": [
+        "src_001",
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_033",
+      "section": "person",
+      "subsection": "head",
+      "title": "사람 - head 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "머리",
+            "possible_meaning": "인지적 능력, 지적 능력 및 공상 활동"
+          }
+        ]
+      },
+      "tags": [
+        "사람",
+        "머리",
+        "인지능력"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_034",
+      "section": "person",
+      "subsection": "face",
+      "title": "사람 - face 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "얼굴 없이 뒤통수",
+            "possible_meaning": "외모 불안, 대인관계 자신감 부족"
+          },
+          {
+            "condition": "옆얼굴",
+            "possible_meaning": "자신감 부족, 외모 불안, 사회적 접촉 회피"
+          }
+        ]
+      },
+      "tags": [
+        "사람",
+        "얼굴",
+        "자신감",
+        "대인관계"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_035",
+      "section": "person",
+      "subsection": "eyes",
+      "title": "사람 - eyes 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "눈 없음",
+            "possible_meaning": "타인과의 감정 교류 불안·회피, 사고장애 가능성"
+          },
+          {
+            "condition": "눈 크고 진하게 강조",
+            "possible_meaning": "예민함, 불안·긴장감"
+          }
+        ]
+      },
+      "tags": [
+        "사람",
+        "눈",
+        "불안",
+        "긴장"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_036",
+      "section": "person",
+      "subsection": "nose",
+      "title": "사람 - nose 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "코 없음",
+            "possible_meaning": "남에게 보여지는 것에 예민하고 두려워함"
+          }
+        ]
+      },
+      "tags": [
+        "사람",
+        "코",
+        "외모불안"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_037",
+      "section": "person",
+      "subsection": "mouth",
+      "title": "사람 - mouth 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "입 없음",
+            "possible_meaning": "타인과의 정서적 교류에 무감각·냉정한 태도"
+          }
+        ]
+      },
+      "tags": [
+        "사람",
+        "입",
+        "정서교류"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_038",
+      "section": "person",
+      "subsection": "neck",
+      "title": "사람 - neck 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "목 없음 (성인·연령 높은 아동)",
+            "possible_meaning": "뇌기능 장애·해리·사고장애 가능성, 자기애적 충동, 미성숙"
+          },
+          {
+            "condition": "목 없음 (미취학 아동)",
+            "possible_meaning": "발달적 미분화 현상으로 병리 해석 불필요"
+          }
+        ],
+        "age_note": "미취학 아동의 목 생략은 그림 발달 단계의 정상적 미분화 현상입니다."
+      },
+      "tags": [
+        "사람",
+        "목",
+        "미분화",
+        "자기통제"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP",
+      "age_filter": {
+        "caution": "미취학 아동의 목 생략은 미분화 현상. 병리 해석 불필요."
+      }
+    },
+    {
+      "id": "htp_039",
+      "section": "person",
+      "subsection": "arms",
+      "title": "사람 - arms 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "팔 없음",
+            "possible_meaning": "세상과 관계 맺고 싶지만 내적 갈등·부분 억압"
+          }
+        ]
+      },
+      "tags": [
+        "사람",
+        "팔",
+        "대인관계",
+        "억압"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_040",
+      "section": "person",
+      "subsection": "hands",
+      "title": "사람 - hands 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "한 손 뒤로 감추거나 생략",
+            "possible_meaning": "교류 소망은 있지만 스스로 할 수 없음에 불안"
+          },
+          {
+            "condition": "두 손 모두 생략",
+            "possible_meaning": "심한 내적 갈등"
+          }
+        ]
+      },
+      "tags": [
+        "사람",
+        "손",
+        "내적갈등"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_041",
+      "section": "person",
+      "subsection": "legs",
+      "title": "사람 - legs 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "다리 너무 길게",
+            "possible_meaning": "자율성·독립성 욕구, 과잉행동 관련 과잉보상 욕구"
+          }
+        ]
+      },
+      "tags": [
+        "사람",
+        "다리",
+        "자율성",
+        "독립"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_042",
+      "section": "person",
+      "subsection": "feet",
+      "title": "사람 - feet 해석",
+      "content": {
+        "interpretations": [
+          {
+            "condition": "다리 그리고 발 모두 생략",
+            "possible_meaning": "스스로 해야 한다는 것에 대한 불안"
+          },
+          {
+            "condition": "발을 동그스름하게",
+            "possible_meaning": "자율성 발달 미숙"
+          },
+          {
+            "condition": "발끝 뾰족하게",
+            "possible_meaning": "자율성과 관련된 적대감·공격성·억압된 분노"
+          }
+        ]
+      },
+      "tags": [
+        "사람",
+        "발",
+        "자율성",
+        "공격성"
+      ],
+      "source_ids": [
+        "src_002"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_043",
+      "section": "developmental",
+      "subsection": "stages_table",
+      "title": "연령별 그림 발달단계",
+      "content": {
+        "stages": [
+          {
+            "age_range": "2~3세",
+            "characteristics": [
+              "무분별한 긁적거리기(난화)",
+              "의미 없는 선의 무질서한 배열",
+              "그림에 이름 붙이기 시작"
+            ]
+          },
+          {
+            "age_range": "4세",
+            "characteristics": [
+              "의도적 표현 시작",
+              "상징적 묘사 시도",
+              "사람·나무·해·산을 주로 그림",
+              "자기중심적 배열",
+              "원근법 없음"
+            ]
+          },
+          {
+            "age_range": "5~6세",
+            "characteristics": [
+              "공상·상상 중심",
+              "미분화 상태 (관념적 부호 표현)",
+              "투시화 현상 정상적",
+              "반복·대칭 표현",
+              "원근법 미발달"
+            ]
+          },
+          {
+            "age_range": "7세",
+            "characteristics": [
+              "형태개념 성취",
+              "독자적 표현 방법 등장",
+              "과장과 생략",
+              "바닥·땅선 표현 시작"
+            ]
+          },
+          {
+            "age_range": "8~9세",
+            "characteristics": [
+              "사실 표현 시도",
+              "3차원적 그림 가능",
+              "공간 깊이·색·미적 정교함 증가"
+            ]
+          },
+          {
+            "age_range": "10~11세",
+            "characteristics": [
+              "객관적·사실적 표현 강화",
+              "지각 발달로 사물 구조 정확히 파악",
+              "어른스러운 그림 등장"
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "발달단계",
+        "연령별",
+        "난화기",
+        "전도식기",
+        "도식기"
+      ],
+      "source_ids": [
+        "src_001",
+        "src_004"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_044",
+      "section": "developmental",
+      "subsection": "key_features",
+      "title": "발달적 미분화 특성 목록",
+      "content": {
+        "features": [
+          {
+            "feature": "미분화 표현",
+            "description": "모든 사물을 원으로 표현, 얼굴·몸·사물의 경계 불분명. 4~6세 정상 발달 현상."
+          },
+          {
+            "feature": "평면적(2차원) 표현",
+            "description": "원근법 없음. 5~7세의 정상 발달 현상."
+          },
+          {
+            "feature": "투시화 표현",
+            "description": "집 내부·외부를 동시에 표현. 미취학 아동에게 정상."
+          },
+          {
+            "feature": "동시성 표현",
+            "description": "종이를 돌려가며 다양한 시점에서 그림."
+          },
+          {
+            "feature": "의인화 표현",
+            "description": "사물에 얼굴·감정 부여."
+          },
+          {
+            "feature": "반복·대칭 표현",
+            "description": "같은 형상 반복 = 정서적 안정 욕구."
+          }
+        ]
+      },
+      "tags": [
+        "미분화",
+        "투시화",
+        "반복",
+        "대칭",
+        "의인화",
+        "발달특성"
+      ],
+      "source_ids": [
+        "src_001",
+        "src_004"
+      ],
+      "test_format": "KHTP",
+      "age_filter": {
+        "applicable": "4~6세 (전도식기)"
+      }
+    },
+    {
+      "id": "htp_045",
+      "section": "cultural",
+      "subsection": "korea_context",
+      "title": "한국 아동 HTP 해석 문화·환경 맥락",
+      "content": {
+        "description": "한국 아동의 HTP 해석 시 문화·환경적 차이를 반드시 고려해야 합니다. 외국 임상 기준을 무비판적으로 적용하면 오진 위험이 있습니다.",
+        "items": [
+          {
+            "topic": "지붕 없는 집 (아파트)",
+            "guidance": "서울 아파트 거주 아동이 지붕 없는 평평한 집을 그리는 것은 거주 환경 반영. '사고장애·현실검증력 장애 가능성 높음'이라는 외국 기준 무비판 적용 금지."
+          },
+          {
+            "topic": "굴뚝·연기 없음",
+            "guidance": "한국 도시 아동은 굴뚝 있는 집을 생활에서 접하기 어려움. 굴뚝 미묘사에 '애정 좌절'을 자동 적용하지 않음."
+          },
+          {
+            "topic": "나무 뿌리·가지 없음 (미취학 아동)",
+            "guidance": "미취학 아동이 나무의 뿌리·가지를 생략하는 것은 학습 이전의 발달적 미분화 현상일 수 있음."
+          },
+          {
+            "topic": "사람 그림에서 목 없음 (미취학 아동)",
+            "guidance": "미분화 현상으로 발달적으로 정상. 뇌기능 장애나 사고장애 의심 기준을 미취학 아동에게 직접 적용 금지."
+          },
+          {
+            "topic": "집·나무 그림의 일부 절단",
+            "guidance": "미취학 아동이 집·나무를 종이 가장자리에서 절단되게 그리는 것은 기저선(땅)을 아직 표현하지 못하는 발달 단계일 수 있음. 충동성 단정 주의."
+          }
+        ]
+      },
+      "tags": [
+        "한국문화",
+        "아파트",
+        "굴뚝",
+        "문화적맥락",
+        "오진주의"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_046",
+      "section": "pdi",
+      "subsection": "house_questions",
+      "title": "집 그림 PDI 질문 목록",
+      "content": {
+        "description": "PDI(Post Drawing Inquiry, 사후질문과정)는 그림 해석의 정확도를 높이는 핵심 보조 수단입니다. 아이의 응답은 그대로 기록하고, 해석에 반드시 반영합니다.",
+        "questions": [
+          "이 집은 누구의 집인가요?",
+          "이 집은 서울에 있는 집인가요? 시골에 있는 집인가요?",
+          "이 집 근처에 다른 집도 있나요?",
+          "이 그림의 경우 날씨는 어떤가요?",
+          "이 집은 oo에게서 멀리 있는 집인가요? 가까이 있는 집인가요?",
+          "이 집에 누가 살고 있나요?",
+          "누구와 이 집에서 살고 싶나요?",
+          "이 집은 무엇으로 만들어졌을까요?",
+          "이 집은 어떤 가정일까요? 따뜻한 가정일까요? 사랑이 있는 가정일까요?"
+        ]
+      },
+      "tags": [
+        "PDI",
+        "집",
+        "사후질문"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_047",
+      "section": "pdi",
+      "subsection": "tree_questions",
+      "title": "나무 그림 PDI 질문 목록",
+      "content": {
+        "description": "PDI(Post Drawing Inquiry, 사후질문과정)는 그림 해석의 정확도를 높이는 핵심 보조 수단입니다. 아이의 응답은 그대로 기록하고, 해석에 반드시 반영합니다.",
+        "questions": [
+          "이 나무는 어떤 나무인가요? (확실하지 않을 때: 잎이 넓은 나뭇잎인가요? 뾰족한 나뭇잎인가요?)",
+          "이 나무는 몇 살인가요?",
+          "이 나무는 죽어 있을까요? 살아있는 나무인가요?",
+          "한 개의 나무만 있나요? 숲 속에 있는 나무인가요?",
+          "이 나무의 건강은 어떠한가요?",
+          "이 나무 주변에는 어떤 것들이 있나요?",
+          "이 나무가 하고 싶은 것은 무엇일까요?",
+          "나중에 이 나무는 어떻게 될까요?",
+          "나무를 그리면서 생각나는 사람은 누구인가요?",
+          "(상흔 등이 있다면) 이것은 무엇인가요? 어떻게 해서 생겼나요?"
+        ]
+      },
+      "tags": [
+        "PDI",
+        "나무",
+        "사후질문"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_048",
+      "section": "pdi",
+      "subsection": "person_questions",
+      "title": "사람 그림 PDI 질문 목록",
+      "content": {
+        "description": "PDI(Post Drawing Inquiry, 사후질문과정)는 그림 해석의 정확도를 높이는 핵심 보조 수단입니다. 아이의 응답은 그대로 기록하고, 해석에 반드시 반영합니다.",
+        "questions": [
+          "이 사람은 누구인가요?",
+          "이 사람의 나이는 몇 살인가요?",
+          "결혼했나요? 결혼했다면 가족은 몇 명인가요?",
+          "이 사람은 친구들이 많을까요? 적을까요? 어떤 친구들이 있나요?",
+          "이 사람은 무엇 하는 사람인가요?",
+          "이 사람의 기분은 어떠한가요?",
+          "지금 이 사람은 무엇을 생각하고 있나요?",
+          "이 사람은 건강한 사람인가요? 약한 사람인가요?",
+          "이 사람이 하고 싶은 것이 있다면 무엇인가요?",
+          "나중에 이 사람은 어떻게 될 것 같은가요?",
+          "(그림에서 이해하기 어려운 부분에 대하여) 이것은 무엇인가요? 왜 그렸나요?"
+        ]
+      },
+      "tags": [
+        "PDI",
+        "사람",
+        "사후질문"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_049",
+      "section": "pdi",
+      "subsection": "interpretation_tips",
+      "title": "PDI 응답 해석 팁",
+      "content": {
+        "tips": [
+          "아이가 집에 '사랑이 많은 가정'이라고 답하면서 맞벌이 환경인 경우 → 따뜻한 가족 애정 욕구 표현 가능",
+          "나무 나이를 자신보다 훨씬 어리게 말하면 → 미성숙 경향, 퇴행 욕구 가능",
+          "나무 나이를 훨씬 많게 말하면 → 내적 미성숙에 대한 과잉보상 욕구",
+          "죽은 나무라고 말하는 경우 → 왜 죽었는지 반드시 추가 질문",
+          "사람 그림에서 '검사자'를 그렸다고 말하면 → 외로움, 관심·사랑 받고 싶음",
+          "'나중에 어떻게 될 것 같아요?'에 '죽어요', '살아져요' 등 부정적 응답 → 특정 인물(부모, 형제 등)에 대한 부정적 감정 또는 갈등 시사"
+        ]
+      },
+      "tags": [
+        "PDI",
+        "해석팁",
+        "답변해석",
+        "애정욕구"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_050",
+      "section": "psychological_signal",
+      "subsection": "애정 욕구",
+      "title": "심리신호 - 애정 욕구",
+      "content": {
+        "signal": "애정 욕구",
+        "indicators": [
+          "창문 많음",
+          "집에 사랑이 많다고 답변",
+          "나무에 열매(사과, 감 등)",
+          "태양 강조",
+          "나무 PDI에서 따뜻함·사랑 언급"
+        ]
+      },
+      "tags": [
+        "심리신호",
+        "애정 욕구"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_051",
+      "section": "psychological_signal",
+      "subsection": "불안·긴장",
+      "title": "심리신호 - 불안·긴장",
+      "content": {
+        "signal": "불안·긴장",
+        "indicators": [
+          "그림 전체가 강한 선",
+          "눈을 크고 진하게 강조",
+          "손 떨림 흔적",
+          "지우개 과도 사용",
+          "그림 소요 시간 매우 짧거나 매우 긺"
+        ]
+      },
+      "tags": [
+        "심리신호",
+        "불안·긴장"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_052",
+      "section": "psychological_signal",
+      "subsection": "위축·우울",
+      "title": "심리신호 - 위축·우울",
+      "content": {
+        "signal": "위축·우울",
+        "indicators": [
+          "그림 크기 전반적으로 작음",
+          "빈약한 줄기의 나무",
+          "세부묘사 생략",
+          "무표정한 사람 그림",
+          "손발 처리 미숙",
+          "집 그림에 문 없음"
+        ]
+      },
+      "tags": [
+        "심리신호",
+        "위축·우울"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_053",
+      "section": "psychological_signal",
+      "subsection": "자율성·독립 욕구",
+      "title": "심리신호 - 자율성·독립 욕구",
+      "content": {
+        "signal": "자율성·독립 욕구",
+        "indicators": [
+          "다리를 매우 길게 그림",
+          "PDI에서 어른이 되고 싶다고 언급",
+          "나무 나이를 자신보다 훨씬 많게 답변"
+        ]
+      },
+      "tags": [
+        "심리신호",
+        "자율성·독립 욕구"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_054",
+      "section": "psychological_signal",
+      "subsection": "충동·공격성",
+      "title": "심리신호 - 충동·공격성",
+      "content": {
+        "signal": "충동·공격성",
+        "indicators": [
+          "그림이 지나치게 큼",
+          "강한 필압",
+          "짧고 강한 선",
+          "톱니 모양 선"
+        ]
+      },
+      "tags": [
+        "심리신호",
+        "충동·공격성"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_055",
+      "section": "psychological_signal",
+      "subsection": "가족 갈등·애정 결핍",
+      "title": "심리신호 - 가족 갈등·애정 결핍",
+      "content": {
+        "signal": "가족 갈등·애정 결핍",
+        "indicators": [
+          "집 PDI에서 특정 가족 구성원 제외하고 살고 싶다고 언급",
+          "사람 그림에서 가족 구성원에 대해 부정적 PDI 응답",
+          "나무 기둥의 많은 상처"
+        ]
+      },
+      "tags": [
+        "심리신호",
+        "가족 갈등·애정 결핍"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_056",
+      "section": "psychological_signal",
+      "subsection": "공상·내향성",
+      "title": "심리신호 - 공상·내향성",
+      "content": {
+        "signal": "공상·내향성",
+        "indicators": [
+          "그림이 왼쪽으로 치우침",
+          "지붕을 크게 강조",
+          "나무 그림 상단 절단",
+          "PDI에서 비현실적 내용 많음"
+        ]
+      },
+      "tags": [
+        "심리신호",
+        "공상·내향성"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_057",
+      "section": "report",
+      "subsection": "generation_guide",
+      "title": "리포트 작성 원칙 및 구조",
+      "content": {
+        "description": "HTP 리포트를 생성할 때 참고하는 작성 원칙입니다.",
+        "principles": [
+          "1. 그림 특징 → PDI 응답 → 생활 맥락 순으로 근거를 연결하여 서술합니다.",
+          "2. '~일 수 있습니다', '~를 시사합니다', '~로 해석될 가능성이 있습니다' 등 가능성 언어를 사용합니다. 단정적 표현을 피합니다.",
+          "3. 아동의 연령과 발달 단계를 명시하고, 미취학 아동의 경우 미분화 현상임을 반드시 언급합니다.",
+          "4. 한국 문화·환경적 맥락(아파트, 굴뚝 없음 등)에서 오는 특징을 별도로 구분하여 언급합니다.",
+          "5. 부정적 해석과 함께 긍정적·보완적 해석도 균형 있게 제시합니다.",
+          "6. 리포트 말미에 '전문가 상담 권고' 또는 '추가 관찰 필요' 문구를 포함합니다.",
+          "7. 아동의 이름·개인정보는 최소화하거나 익명 처리합니다."
+        ],
+        "report_structure": [
+          "① 검사 개요 (이름, 만 나이, 성별, 발달단계, 검사 태도, 소요 시간)",
+          "② KHTP 전체적 인상 (1장 구도 전반의 조화·안정감, 세 요소 배치 관계)",
+          "③ 집 그림 분석 (구조적 특징 + 내용적 특징 + PDI 응답)",
+          "④ 나무 그림 분석 (구조적 특징 + 내용적 특징 + PDI 응답)",
+          "⑤ 사람 그림 분석 (구조적 특징 + 내용적 특징 + PDI 응답, 성별 일치 여부)",
+          "⑥ 요소 간 관계 분석 (집-나무, 집-사람, 나무-사람 공간 관계)",
+          "⑦ 종합 소견 (심리적 특성, 애정·관계 욕구, 주목할 신호, 강점)",
+          "⑧ 권고사항 및 주의사항"
+        ],
+        "disclaimer_template": "본 리포트는 HTP 그림 검사 결과를 바탕으로 작성된 참고 자료이며, 아동의 심리 상태를 최종 진단하거나 단정하는 문서가 아닙니다. 정확한 심리 평가를 위해서는 전문 심리사 또는 전문의의 임상 해석이 필요합니다."
+      },
+      "tags": [
+        "리포트",
+        "작성원칙",
+        "구조",
+        "면책문구"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_058",
+      "section": "combined_features",
+      "subsection": "size_position",
+      "title": "크기+위치 조합 해석",
+      "content": {
+        "items": [
+          {
+            "id": "sp_001",
+            "features": [
+              "small_size",
+              "upper_position"
+            ],
+            "opencv": "bbox_area_ratio < 0.15 AND bbox_center_y < 0.33",
+            "meaning": [
+              "에너지 수준 저하 가능성",
+              "자기 확신 부족 가능성",
+              "낙천적 경향 동반 가능"
+            ]
+          },
+          {
+            "id": "sp_002",
+            "features": [
+              "large_size",
+              "upper_position"
+            ],
+            "opencv": "bbox_area_ratio > 0.5 AND bbox_center_y < 0.33",
+            "meaning": [
+              "현실에서 얻지 못하는 만족 추구 가능성",
+              "지적 성취욕 강함",
+              "공상 경향"
+            ]
+          },
+          {
+            "id": "sp_003",
+            "features": [
+              "small_size",
+              "lower_position"
+            ],
+            "opencv": "bbox_area_ratio < 0.15 AND bbox_center_y > 0.66",
+            "meaning": [
+              "심한 위축 가능성",
+              "우울감",
+              "자신을 작은 존재로 인식"
+            ]
+          },
+          {
+            "id": "sp_004",
+            "features": [
+              "overflow_size"
+            ],
+            "opencv": "bbox touches boundary on 2+ sides",
+            "meaning": [
+              "환경 압박감 매우 큼",
+              "과잉보상 욕구 강함",
+              "좌절·실망감 내재"
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "조합해석",
+        "크기",
+        "위치",
+        "에너지",
+        "자존감"
+      ],
+      "source_ids": [
+        "src_002",
+        "src_003"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_059",
+      "section": "combined_features",
+      "subsection": "direction_body",
+      "title": "방향+신체구조 조합 해석",
+      "content": {
+        "items": [
+          {
+            "id": "db_001",
+            "features": [
+              "body_front",
+              "face_side"
+            ],
+            "meaning": [
+              "사회적 긴장 가능성",
+              "죄의식 또는 정직성 결여 가능성",
+              "자기방어 경향"
+            ]
+          },
+          {
+            "id": "db_002",
+            "features": [
+              "full_side_view",
+              "one_arm_visible",
+              "one_leg_visible"
+            ],
+            "meaning": [
+              "환경 직면 회피",
+              "자기폐쇄적 경향",
+              "친근한 것에만 접촉하려는 경향"
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "조합해석",
+        "방향",
+        "신체구조",
+        "사회불안",
+        "자기방어"
+      ],
+      "source_ids": [
+        "src_002",
+        "src_003"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_060",
+      "section": "combined_features",
+      "subsection": "line_pressure_region",
+      "title": "필압+부위 조합 해석",
+      "content": {
+        "items": [
+          {
+            "id": "lp_001",
+            "features": [
+              "roof_dark_outline",
+              "localized_high_pressure"
+            ],
+            "opencv": "roof_pixel_density > body_avg * 1.5",
+            "meaning": [
+              "불안감 가능성",
+              "인지적 긴장",
+              "자신감 부족"
+            ]
+          },
+          {
+            "id": "lp_002",
+            "features": [
+              "wall_dark_outline",
+              "trunk_dark_outline"
+            ],
+            "opencv": "outline_density >> interior_density",
+            "meaning": [
+              "현실 접촉 유지 욕구",
+              "공상에서 만족 추구 경향"
+            ]
+          },
+          {
+            "id": "lp_003",
+            "features": [
+              "ground_line_dark"
+            ],
+            "meaning": [
+              "현실 수준에서의 불안감"
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "조합해석",
+        "필압",
+        "부위",
+        "불안",
+        "현실접촉"
+      ],
+      "source_ids": [
+        "src_002",
+        "src_003"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_061",
+      "section": "combined_features",
+      "subsection": "element_ratio",
+      "title": "KHTP 요소 간 크기 비율 해석",
+      "content": {
+        "items": [
+          {
+            "id": "er_001",
+            "features": [
+              "tree_larger_than_house",
+              "tree_covering_roof"
+            ],
+            "opencv": "tree_area > house_area AND tree overlaps house_roof",
+            "meaning": [
+              "지배적 보호자 경험 가능성",
+              "심리적 압박 가능성"
+            ]
+          },
+          {
+            "id": "er_002",
+            "features": [
+              "person_larger_than_house"
+            ],
+            "opencv": "person_area > house_area",
+            "meaning": [
+              "자기 중심성 강함 가능성",
+              "과대감 가능성"
+            ],
+            "age_note": "미취학 아동은 발달적 미분화 감안"
+          },
+          {
+            "id": "er_003",
+            "features": [
+              "person_very_small_vs_house"
+            ],
+            "opencv": "person_area < house_area * 0.2",
+            "meaning": [
+              "환경에 압도된 느낌",
+              "무력감 또는 위축 가능성"
+            ]
+          },
+          {
+            "id": "er_004",
+            "features": [
+              "tree_between_house_and_person"
+            ],
+            "opencv": "tree_x BETWEEN house_x AND person_x",
+            "meaning": [
+              "가정과 자기 사이 심리적 장벽 가능성",
+              "가족 관계 갈등 가능성"
+            ]
+          }
+        ]
+      },
+      "tags": [
+        "조합해석",
+        "KHTP",
+        "요소비율",
+        "크기관계"
+      ],
+      "source_ids": [
+        "src_002",
+        "src_003"
+      ],
+      "test_format": "KHTP",
+      "needs_verification": true,
+      "verification_note": "Burns(1987) 등 KHTP 전용 문헌으로 검증 필요"
+    },
+    {
+      "id": "htp_062",
+      "section": "combined_features",
+      "subsection": "position_cutoff",
+      "title": "위치+절단 조합 해석",
+      "content": {
+        "items": [
+          {
+            "id": "pc_001",
+            "features": [
+              "left_position",
+              "left_cutoff"
+            ],
+            "opencv": "bbox_center_x < 0.33 AND left_edge < margin",
+            "meaning": [
+              "과거 고착",
+              "의존적 경향",
+              "강박적 반복 경향",
+              "미래 두려움"
+            ]
+          },
+          {
+            "id": "pc_002",
+            "features": [
+              "right_position",
+              "right_cutoff"
+            ],
+            "opencv": "bbox_center_x > 0.66 AND right_edge > img_w - margin",
+            "meaning": [
+              "과거로부터 도피 욕구",
+              "감정 표현 회피",
+              "강한 행동 통제"
+            ]
+          },
+          {
+            "id": "pc_003",
+            "features": [
+              "lower_position",
+              "bottom_cutoff"
+            ],
+            "opencv": "bbox_center_y > 0.66 AND bottom_edge > img_h - margin",
+            "meaning": [
+              "강한 충동성 존재",
+              "억제 욕구와 충동 공존",
+              "우울감"
+            ],
+            "age_note": "미취학 아동 집·나무는 기저선 미발달 반영 가능. 사람 그림에만 우선 적용."
+          }
+        ]
+      },
+      "tags": [
+        "조합해석",
+        "위치",
+        "절단",
+        "과거고착",
+        "충동성"
+      ],
+      "source_ids": [
+        "src_002",
+        "src_003"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_063",
+      "section": "combined_features",
+      "subsection": "tree_structure",
+      "title": "나무 내부 구조 불균형 해석",
+      "content": {
+        "items": [
+          {
+            "id": "ts_001",
+            "features": [
+              "crown_much_larger_than_trunk"
+            ],
+            "opencv": "crown_area > trunk_area * 3",
+            "meaning": [
+              "불안정 가능성",
+              "결정 회피 가능성",
+              "우유부단한 경향"
+            ]
+          },
+          {
+            "id": "ts_002",
+            "features": [
+              "trunk_much_larger_than_crown"
+            ],
+            "opencv": "trunk_area > crown_area * 2",
+            "meaning": [
+              "성격 구조의 과잉보상 욕구",
+              "자아강도 부족에 대한 방어"
+            ]
+          },
+          {
+            "id": "ts_003",
+            "features": [
+              "floating_tree",
+              "no_roots"
+            ],
+            "opencv": "tree_bottom NOT touching ground_line",
+            "meaning": [
+              "현실 기반 불안정감"
+            ],
+            "age_note": "미취학 아동은 발달적 미분화 감안"
+          }
+        ]
+      },
+      "tags": [
+        "조합해석",
+        "나무",
+        "구조불균형",
+        "불안정",
+        "강박"
+      ],
+      "source_ids": [
+        "src_002",
+        "src_003"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_064",
+      "section": "khtp_relationships",
+      "subsection": "person_house",
+      "title": "KHTP - 사람↔집 공간 관계",
+      "content": {
+        "items": [
+          {
+            "cond": "사람이 집을 향해 있음",
+            "opencv": "face_direction toward house",
+            "meaning": "가정 지향, 안정 추구"
+          },
+          {
+            "cond": "사람이 집에서 멀리 위치",
+            "opencv": "distance > img_w * 0.5",
+            "meaning": "가정으로부터 심리적 거리감, 소속감 결핍 가능성"
+          },
+          {
+            "cond": "사람이 집 안에 위치",
+            "opencv": "person_bbox inside house_bbox",
+            "meaning": "가정 의존성 강함, 안전 욕구"
+          },
+          {
+            "cond": "사람이 집보다 현저히 큼",
+            "opencv": "person_area > house_area",
+            "meaning": "자기 중심성, 과대감 가능성"
+          },
+          {
+            "cond": "사람이 집보다 매우 작음",
+            "opencv": "person_area < house_area*0.2",
+            "meaning": "환경에 압도된 느낌, 무력감 가능성"
+          }
+        ]
+      },
+      "tags": [
+        "KHTP",
+        "공간관계",
+        "사람",
+        "집",
+        "가족"
+      ],
+      "source_ids": [
+        "src_inferred"
+      ],
+      "test_format": "KHTP",
+      "khtp_only": true,
+      "needs_verification": true,
+      "verification_note": "Burns(1987) 등 KHTP 전용 문헌으로 검증 필요"
+    },
+    {
+      "id": "htp_065",
+      "section": "khtp_relationships",
+      "subsection": "person_tree",
+      "title": "KHTP - 사람↔나무 공간 관계",
+      "content": {
+        "items": [
+          {
+            "cond": "사람이 나무 뒤에 위치",
+            "opencv": "person overlaps tree AND person smaller",
+            "meaning": "자기 노출 회피, 보호받고 싶은 욕구"
+          },
+          {
+            "cond": "나무가 사람보다 압도적으로 큼",
+            "opencv": "tree_area > person_area * 3",
+            "meaning": "환경 압박감, 자신을 작게 인식"
+          },
+          {
+            "cond": "사람과 나무 나란히 인접",
+            "opencv": "distance < img_w * 0.2",
+            "meaning": "자기상과 현실 적응의 통합 시도"
+          }
+        ]
+      },
+      "tags": [
+        "KHTP",
+        "공간관계",
+        "사람",
+        "나무",
+        "자기상"
+      ],
+      "source_ids": [
+        "src_inferred"
+      ],
+      "test_format": "KHTP",
+      "khtp_only": true,
+      "needs_verification": true,
+      "verification_note": "Burns(1987) 등 KHTP 전용 문헌으로 검증 필요"
+    },
+    {
+      "id": "htp_066",
+      "section": "khtp_relationships",
+      "subsection": "house_tree",
+      "title": "KHTP - 집↔나무 공간 관계",
+      "content": {
+        "items": [
+          {
+            "cond": "나무가 집 지붕을 덮을 만큼 큼",
+            "opencv": "tree overlaps house_roof AND tree_area > house_area",
+            "meaning": "지배적 부모상, 심리적 압박 가능성"
+          },
+          {
+            "cond": "나무가 집과 사람 사이 위치",
+            "opencv": "tree_x BETWEEN house_x AND person_x",
+            "meaning": "가정과 자기 사이 심리적 장벽 가능성"
+          },
+          {
+            "cond": "집과 나무 매우 가까이 인접",
+            "opencv": "distance < img_w * 0.15",
+            "meaning": "가족 의존성 강함 가능성"
+          }
+        ]
+      },
+      "tags": [
+        "KHTP",
+        "공간관계",
+        "집",
+        "나무",
+        "부모상"
+      ],
+      "source_ids": [
+        "src_inferred"
+      ],
+      "test_format": "KHTP",
+      "khtp_only": true,
+      "needs_verification": true,
+      "verification_note": "Burns(1987) 등 KHTP 전용 문헌으로 검증 필요"
+    },
+    {
+      "id": "htp_067",
+      "section": "khtp_relationships",
+      "subsection": "overall_composition",
+      "title": "KHTP - 전체 구도 해석",
+      "content": {
+        "items": [
+          {
+            "cond": "세 요소가 한쪽으로 뭉쳐 있음",
+            "opencv": "all within img_w * 0.4 range",
+            "meaning": "의존적 경향 또는 공간 활용 자신감 부족 가능성"
+          },
+          {
+            "cond": "한 요소만 반대편에 고립",
+            "opencv": "one element distance > img_w * 0.5",
+            "meaning": "고립된 요소가 상징하는 영역에서 갈등 또는 회피"
+          },
+          {
+            "cond": "세 요소 종이 전체 균형 배치",
+            "opencv": "elements evenly distributed",
+            "meaning": "전반적 안정감, 각 영역의 균형적 인식"
+          },
+          {
+            "cond": "집·나무·사람 모두 하단에 몰림",
+            "opencv": "all bbox_center_y > 0.6",
+            "meaning": "현실 지향적이나 내면 불안정감 동반 가능"
+          }
+        ]
+      },
+      "tags": [
+        "KHTP",
+        "전체구도",
+        "공간배분",
+        "안정감"
+      ],
+      "source_ids": [
+        "src_inferred"
+      ],
+      "test_format": "KHTP",
+      "khtp_only": true,
+      "needs_verification": true,
+      "verification_note": "Burns(1987) 등 KHTP 전용 문헌으로 검증 필요"
+    },
+    {
+      "id": "htp_068",
+      "section": "case_example",
+      "subsection": "14-1",
+      "title": "실제 사례 14-1 (만4세 여)",
+      "content": {
+        "case_id": "14-1",
+        "age": 4,
+        "gender": "여",
+        "overall": "그림 전체 왼쪽 치우침 → 자의식 강함, 내성적, 심리적 불안감 가능",
+        "house": "지붕-벽 분리, 창문 많음 → 불안감, 애정·관심 욕구. PDI '사랑이 많은 가정' → 따뜻한 가족 사랑 소망",
+        "tree": "빈약한 구조, 기둥 상흔 → 정서적 상처 가능. PDI '따뜻하게 옷 입고 싶어요' → 엄마 애정 간절히 요구",
+        "person": "경직된 표정, 발 미묘사 → 엄마와 분리 불안, 내성적·자율성 결여 가능. 긴 다리 → 자율성 노력 심리"
+      },
+      "tags": [
+        "사례",
+        "나이4",
+        "성별여",
+        "실제사례"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_069",
+      "section": "case_example",
+      "subsection": "14-2",
+      "title": "실제 사례 14-2 (만4세 남)",
+      "content": {
+        "case_id": "14-2",
+        "age": 4,
+        "gender": "남",
+        "overall": "그림 크기 작고 미분화 → 동기·활동수준 낮음, 위축",
+        "house": "오른쪽 치우침, 창문 없음, 강아지 집 추가 → 애정 요구, 친구관계 위축 가능",
+        "tree": "수관 크고 가지 없음, 작은 나무 추가 → 현재 욕구 충족 어려움, 우울감. PDI 1살짜리 나무 → 미성숙",
+        "person": "눈 강조, 크기 작음 → 자존감 낮음, 예민·불안·긴장. PDI 부모 그림에 '살아져요/죽어요' → 부모 이혼으로 인한 부정적 감정"
+      },
+      "tags": [
+        "사례",
+        "나이4",
+        "성별남",
+        "실제사례"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    },
+    {
+      "id": "htp_070",
+      "section": "case_example",
+      "subsection": "14-7",
+      "title": "실제 사례 14-7 (만6세 남)",
+      "content": {
+        "case_id": "14-7",
+        "age": 6,
+        "gender": "남",
+        "overall": "전체적 안정감. 유난히 큰 눈 → 예민한 성격",
+        "house": "격자무늬 창문 → 마음 감추기, 위축. PDI '동생하고만 살고 싶어요' → 동생 간절히 원함, 외로움",
+        "tree": "뿌리 없이 허공에 떠 있음, 가지 없음 → 현실 불안정감. 사과나무·새집 추가 → 사랑 받고 싶은 소망",
+        "person": "눈 크고 진함, 코 생략, 콧물 → 불안·긴장·예민. 손발 둥글게 → 자율성 미숙, 모친 의존 욕구"
+      },
+      "tags": [
+        "사례",
+        "나이6",
+        "성별남",
+        "실제사례"
+      ],
+      "source_ids": [
+        "src_001"
+      ],
+      "test_format": "KHTP"
+    }
+  ]
+}
