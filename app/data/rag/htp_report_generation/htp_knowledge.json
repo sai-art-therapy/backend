@@ -3,16 +3,14 @@
     "version": "2.0",
     "format": "RAG_chunks",
     "test_format": "KHTP (집·나무·사람 1장)",
-    "total_chunks": 70,
-    "source_file": "sources_1.json",
+    "total_chunks": 61,
+    "source_file": "sources.json",
     "sections": [
-      "case_example",
       "combined_features",
       "cultural",
       "developmental",
       "framework",
       "house",
-      "khtp_relationships",
       "meta",
       "pdi",
       "person",
@@ -196,9 +194,7 @@
         "내용분석"
       ],
       "source_ids": [
-        "src_001",
-        "src_002",
-        "src_003"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -240,8 +236,7 @@
         "강박"
       ],
       "source_ids": [
-        "src_002",
-        "src_003"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -282,8 +277,7 @@
         "대인관계"
       ],
       "source_ids": [
-        "src_002",
-        "src_003"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -326,8 +320,8 @@
         "위축"
       ],
       "source_ids": [
-        "src_002",
-        "src_003"
+        "src_001",
+        "src_002"
       ],
       "test_format": "KHTP"
     },
@@ -367,7 +361,8 @@
         "공상"
       ],
       "source_ids": [
-        "src_003"
+        "src_001",
+        "src_002"
       ],
       "test_format": "KHTP"
     },
@@ -410,8 +405,8 @@
         "우울"
       ],
       "source_ids": [
-        "src_002",
-        "src_003"
+        "src_001",
+        "src_002"
       ],
       "test_format": "KHTP"
     },
@@ -467,7 +462,7 @@
         "의존성"
       ],
       "source_ids": [
-        "src_003"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -506,8 +501,8 @@
         "강박"
       ],
       "source_ids": [
-        "src_002",
-        "src_003"
+        "src_001",
+        "src_002"
       ],
       "test_format": "KHTP"
     },
@@ -535,7 +530,7 @@
         "자기방어"
       ],
       "source_ids": [
-        "src_003"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -567,7 +562,7 @@
         "자기통제"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -598,6 +593,7 @@
         "정서혼란"
       ],
       "source_ids": [
+        "src_001",
         "src_002"
       ],
       "test_format": "KHTP"
@@ -636,7 +632,7 @@
         "미래회피"
       ],
       "source_ids": [
-        "src_003"
+        "src_001"
       ],
       "test_format": "KHTP",
       "age_filter": {
@@ -666,7 +662,7 @@
         "미분화"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP",
       "age_filter": {
@@ -751,7 +747,7 @@
         "자기공개"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -792,7 +788,7 @@
         "대인접촉"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -820,7 +816,7 @@
         "자아통제력"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -849,8 +845,7 @@
         "한국문화맥락"
       ],
       "source_ids": [
-        "src_001",
-        "src_003"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -884,7 +879,7 @@
         "인지과정"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -902,8 +897,13 @@
           {
             "condition": "공중에 떠 있는 집",
             "possible_meaning": "현실 이탈, 공상 몰입 (성인 기준)"
+          },
+          {
+            "condition": "집이 공중에 떠 있음 (미취학 아동)",
+            "possible_meaning": "기저선(땅선)을 아직 표현하지 못하는 발달적 특성. 병리 해석 불필요"
           }
-        ]
+        ],
+        "age_note": "미취학 아동(6세 이하)은 기저선을 그리는 것이 발달 과제이므로, 공중에 떠 있는 그림이 현실 이탈을 의미하지 않습니다. 집·나무 그림의 절단도 기저선 미발달의 결과일 수 있으므로 신중하게 판단하세요. 사람 그림에는 이 규칙을 적용하지 않습니다."
       },
       "tags": [
         "집",
@@ -911,7 +911,7 @@
         "현실접촉"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -943,7 +943,7 @@
         "나무"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -996,7 +996,7 @@
         "외상"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -1025,7 +1025,7 @@
         "불안정"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP",
       "age_filter": {
@@ -1060,7 +1060,7 @@
         "상호작용"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP",
       "age_filter": {
@@ -1086,7 +1086,7 @@
         "내적갈등"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -1110,7 +1110,7 @@
         "우울"
       ],
       "source_ids": [
-        "src_003"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -1138,7 +1138,7 @@
         "과잉보상"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -1183,7 +1183,7 @@
         "인지능력"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -1211,7 +1211,7 @@
         "대인관계"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -1239,7 +1239,7 @@
         "긴장"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -1262,7 +1262,7 @@
         "외모불안"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -1285,7 +1285,7 @@
         "정서교류"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -1314,7 +1314,7 @@
         "자기통제"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP",
       "age_filter": {
@@ -1341,7 +1341,7 @@
         "억압"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -1368,7 +1368,7 @@
         "내적갈등"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -1392,7 +1392,7 @@
         "독립"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -1424,7 +1424,7 @@
         "공격성"
       ],
       "source_ids": [
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -1498,8 +1498,7 @@
         "도식기"
       ],
       "source_ids": [
-        "src_001",
-        "src_004"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -1545,8 +1544,7 @@
         "발달특성"
       ],
       "source_ids": [
-        "src_001",
-        "src_004"
+        "src_001"
       ],
       "test_format": "KHTP",
       "age_filter": {
@@ -1679,32 +1677,6 @@
         "PDI",
         "사람",
         "사후질문"
-      ],
-      "source_ids": [
-        "src_001"
-      ],
-      "test_format": "KHTP"
-    },
-    {
-      "id": "htp_049",
-      "section": "pdi",
-      "subsection": "interpretation_tips",
-      "title": "PDI 응답 해석 팁",
-      "content": {
-        "tips": [
-          "아이가 집에 '사랑이 많은 가정'이라고 답하면서 맞벌이 환경인 경우 → 따뜻한 가족 애정 욕구 표현 가능",
-          "나무 나이를 자신보다 훨씬 어리게 말하면 → 미성숙 경향, 퇴행 욕구 가능",
-          "나무 나이를 훨씬 많게 말하면 → 내적 미성숙에 대한 과잉보상 욕구",
-          "죽은 나무라고 말하는 경우 → 왜 죽었는지 반드시 추가 질문",
-          "사람 그림에서 '검사자'를 그렸다고 말하면 → 외로움, 관심·사랑 받고 싶음",
-          "'나중에 어떻게 될 것 같아요?'에 '죽어요', '살아져요' 등 부정적 응답 → 특정 인물(부모, 형제 등)에 대한 부정적 감정 또는 갈등 시사"
-        ]
-      },
-      "tags": [
-        "PDI",
-        "해석팁",
-        "답변해석",
-        "애정욕구"
       ],
       "source_ids": [
         "src_001"
@@ -1981,8 +1953,8 @@
         "자존감"
       ],
       "source_ids": [
-        "src_002",
-        "src_003"
+        "src_001",
+        "src_002"
       ],
       "test_format": "KHTP"
     },
@@ -2028,8 +2000,7 @@
         "자기방어"
       ],
       "source_ids": [
-        "src_002",
-        "src_003"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -2084,79 +2055,10 @@
         "현실접촉"
       ],
       "source_ids": [
-        "src_002",
-        "src_003"
+        "src_001",
+        "src_002"
       ],
       "test_format": "KHTP"
-    },
-    {
-      "id": "htp_061",
-      "section": "combined_features",
-      "subsection": "element_ratio",
-      "title": "KHTP 요소 간 크기 비율 해석",
-      "content": {
-        "items": [
-          {
-            "id": "er_001",
-            "features": [
-              "tree_larger_than_house",
-              "tree_covering_roof"
-            ],
-            "opencv": "tree_area > house_area AND tree overlaps house_roof",
-            "meaning": [
-              "지배적 보호자 경험 가능성",
-              "심리적 압박 가능성"
-            ]
-          },
-          {
-            "id": "er_002",
-            "features": [
-              "person_larger_than_house"
-            ],
-            "opencv": "person_area > house_area",
-            "meaning": [
-              "자기 중심성 강함 가능성",
-              "과대감 가능성"
-            ],
-            "age_note": "미취학 아동은 발달적 미분화 감안"
-          },
-          {
-            "id": "er_003",
-            "features": [
-              "person_very_small_vs_house"
-            ],
-            "opencv": "person_area < house_area * 0.2",
-            "meaning": [
-              "환경에 압도된 느낌",
-              "무력감 또는 위축 가능성"
-            ]
-          },
-          {
-            "id": "er_004",
-            "features": [
-              "tree_between_house_and_person"
-            ],
-            "opencv": "tree_x BETWEEN house_x AND person_x",
-            "meaning": [
-              "가정과 자기 사이 심리적 장벽 가능성",
-              "가족 관계 갈등 가능성"
-            ]
-          }
-        ]
-      },
-      "tags": [
-        "조합해석",
-        "KHTP",
-        "요소비율",
-        "크기관계"
-      ],
-      "source_ids": [
-        "src_002",
-        "src_003"
-      ],
-      "test_format": "KHTP",
-      "needs_verification": true,
-      "verification_note": "Burns(1987) 등 KHTP 전용 문헌으로 검증 필요"
     },
     {
       "id": "htp_062",
@@ -2216,8 +2118,8 @@
         "충동성"
       ],
       "source_ids": [
-        "src_002",
-        "src_003"
+        "src_001",
+        "src_002"
       ],
       "test_format": "KHTP"
     },
@@ -2271,252 +2173,6 @@
         "구조불균형",
         "불안정",
         "강박"
-      ],
-      "source_ids": [
-        "src_002",
-        "src_003"
-      ],
-      "test_format": "KHTP"
-    },
-    {
-      "id": "htp_064",
-      "section": "khtp_relationships",
-      "subsection": "person_house",
-      "title": "KHTP - 사람↔집 공간 관계",
-      "content": {
-        "items": [
-          {
-            "cond": "사람이 집을 향해 있음",
-            "opencv": "face_direction toward house",
-            "meaning": "가정 지향, 안정 추구"
-          },
-          {
-            "cond": "사람이 집에서 멀리 위치",
-            "opencv": "distance > img_w * 0.5",
-            "meaning": "가정으로부터 심리적 거리감, 소속감 결핍 가능성"
-          },
-          {
-            "cond": "사람이 집 안에 위치",
-            "opencv": "person_bbox inside house_bbox",
-            "meaning": "가정 의존성 강함, 안전 욕구"
-          },
-          {
-            "cond": "사람이 집보다 현저히 큼",
-            "opencv": "person_area > house_area",
-            "meaning": "자기 중심성, 과대감 가능성"
-          },
-          {
-            "cond": "사람이 집보다 매우 작음",
-            "opencv": "person_area < house_area*0.2",
-            "meaning": "환경에 압도된 느낌, 무력감 가능성"
-          }
-        ]
-      },
-      "tags": [
-        "KHTP",
-        "공간관계",
-        "사람",
-        "집",
-        "가족"
-      ],
-      "source_ids": [
-        "src_inferred"
-      ],
-      "test_format": "KHTP",
-      "khtp_only": true,
-      "needs_verification": true,
-      "verification_note": "Burns(1987) 등 KHTP 전용 문헌으로 검증 필요"
-    },
-    {
-      "id": "htp_065",
-      "section": "khtp_relationships",
-      "subsection": "person_tree",
-      "title": "KHTP - 사람↔나무 공간 관계",
-      "content": {
-        "items": [
-          {
-            "cond": "사람이 나무 뒤에 위치",
-            "opencv": "person overlaps tree AND person smaller",
-            "meaning": "자기 노출 회피, 보호받고 싶은 욕구"
-          },
-          {
-            "cond": "나무가 사람보다 압도적으로 큼",
-            "opencv": "tree_area > person_area * 3",
-            "meaning": "환경 압박감, 자신을 작게 인식"
-          },
-          {
-            "cond": "사람과 나무 나란히 인접",
-            "opencv": "distance < img_w * 0.2",
-            "meaning": "자기상과 현실 적응의 통합 시도"
-          }
-        ]
-      },
-      "tags": [
-        "KHTP",
-        "공간관계",
-        "사람",
-        "나무",
-        "자기상"
-      ],
-      "source_ids": [
-        "src_inferred"
-      ],
-      "test_format": "KHTP",
-      "khtp_only": true,
-      "needs_verification": true,
-      "verification_note": "Burns(1987) 등 KHTP 전용 문헌으로 검증 필요"
-    },
-    {
-      "id": "htp_066",
-      "section": "khtp_relationships",
-      "subsection": "house_tree",
-      "title": "KHTP - 집↔나무 공간 관계",
-      "content": {
-        "items": [
-          {
-            "cond": "나무가 집 지붕을 덮을 만큼 큼",
-            "opencv": "tree overlaps house_roof AND tree_area > house_area",
-            "meaning": "지배적 부모상, 심리적 압박 가능성"
-          },
-          {
-            "cond": "나무가 집과 사람 사이 위치",
-            "opencv": "tree_x BETWEEN house_x AND person_x",
-            "meaning": "가정과 자기 사이 심리적 장벽 가능성"
-          },
-          {
-            "cond": "집과 나무 매우 가까이 인접",
-            "opencv": "distance < img_w * 0.15",
-            "meaning": "가족 의존성 강함 가능성"
-          }
-        ]
-      },
-      "tags": [
-        "KHTP",
-        "공간관계",
-        "집",
-        "나무",
-        "부모상"
-      ],
-      "source_ids": [
-        "src_inferred"
-      ],
-      "test_format": "KHTP",
-      "khtp_only": true,
-      "needs_verification": true,
-      "verification_note": "Burns(1987) 등 KHTP 전용 문헌으로 검증 필요"
-    },
-    {
-      "id": "htp_067",
-      "section": "khtp_relationships",
-      "subsection": "overall_composition",
-      "title": "KHTP - 전체 구도 해석",
-      "content": {
-        "items": [
-          {
-            "cond": "세 요소가 한쪽으로 뭉쳐 있음",
-            "opencv": "all within img_w * 0.4 range",
-            "meaning": "의존적 경향 또는 공간 활용 자신감 부족 가능성"
-          },
-          {
-            "cond": "한 요소만 반대편에 고립",
-            "opencv": "one element distance > img_w * 0.5",
-            "meaning": "고립된 요소가 상징하는 영역에서 갈등 또는 회피"
-          },
-          {
-            "cond": "세 요소 종이 전체 균형 배치",
-            "opencv": "elements evenly distributed",
-            "meaning": "전반적 안정감, 각 영역의 균형적 인식"
-          },
-          {
-            "cond": "집·나무·사람 모두 하단에 몰림",
-            "opencv": "all bbox_center_y > 0.6",
-            "meaning": "현실 지향적이나 내면 불안정감 동반 가능"
-          }
-        ]
-      },
-      "tags": [
-        "KHTP",
-        "전체구도",
-        "공간배분",
-        "안정감"
-      ],
-      "source_ids": [
-        "src_inferred"
-      ],
-      "test_format": "KHTP",
-      "khtp_only": true,
-      "needs_verification": true,
-      "verification_note": "Burns(1987) 등 KHTP 전용 문헌으로 검증 필요"
-    },
-    {
-      "id": "htp_068",
-      "section": "case_example",
-      "subsection": "14-1",
-      "title": "실제 사례 14-1 (만4세 여)",
-      "content": {
-        "case_id": "14-1",
-        "age": 4,
-        "gender": "여",
-        "overall": "그림 전체 왼쪽 치우침 → 자의식 강함, 내성적, 심리적 불안감 가능",
-        "house": "지붕-벽 분리, 창문 많음 → 불안감, 애정·관심 욕구. PDI '사랑이 많은 가정' → 따뜻한 가족 사랑 소망",
-        "tree": "빈약한 구조, 기둥 상흔 → 정서적 상처 가능. PDI '따뜻하게 옷 입고 싶어요' → 엄마 애정 간절히 요구",
-        "person": "경직된 표정, 발 미묘사 → 엄마와 분리 불안, 내성적·자율성 결여 가능. 긴 다리 → 자율성 노력 심리"
-      },
-      "tags": [
-        "사례",
-        "나이4",
-        "성별여",
-        "실제사례"
-      ],
-      "source_ids": [
-        "src_001"
-      ],
-      "test_format": "KHTP"
-    },
-    {
-      "id": "htp_069",
-      "section": "case_example",
-      "subsection": "14-2",
-      "title": "실제 사례 14-2 (만4세 남)",
-      "content": {
-        "case_id": "14-2",
-        "age": 4,
-        "gender": "남",
-        "overall": "그림 크기 작고 미분화 → 동기·활동수준 낮음, 위축",
-        "house": "오른쪽 치우침, 창문 없음, 강아지 집 추가 → 애정 요구, 친구관계 위축 가능",
-        "tree": "수관 크고 가지 없음, 작은 나무 추가 → 현재 욕구 충족 어려움, 우울감. PDI 1살짜리 나무 → 미성숙",
-        "person": "눈 강조, 크기 작음 → 자존감 낮음, 예민·불안·긴장. PDI 부모 그림에 '살아져요/죽어요' → 부모 이혼으로 인한 부정적 감정"
-      },
-      "tags": [
-        "사례",
-        "나이4",
-        "성별남",
-        "실제사례"
-      ],
-      "source_ids": [
-        "src_001"
-      ],
-      "test_format": "KHTP"
-    },
-    {
-      "id": "htp_070",
-      "section": "case_example",
-      "subsection": "14-7",
-      "title": "실제 사례 14-7 (만6세 남)",
-      "content": {
-        "case_id": "14-7",
-        "age": 6,
-        "gender": "남",
-        "overall": "전체적 안정감. 유난히 큰 눈 → 예민한 성격",
-        "house": "격자무늬 창문 → 마음 감추기, 위축. PDI '동생하고만 살고 싶어요' → 동생 간절히 원함, 외로움",
-        "tree": "뿌리 없이 허공에 떠 있음, 가지 없음 → 현실 불안정감. 사과나무·새집 추가 → 사랑 받고 싶은 소망",
-        "person": "눈 크고 진함, 코 생략, 콧물 → 불안·긴장·예민. 손발 둥글게 → 자율성 미숙, 모친 의존 욕구"
-      },
-      "tags": [
-        "사례",
-        "나이6",
-        "성별남",
-        "실제사례"
       ],
       "source_ids": [
         "src_001"
