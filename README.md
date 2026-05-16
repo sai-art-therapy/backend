@@ -14,12 +14,23 @@ HTP 그림 기반 AI 심리 분석 및 육아 방향 안내 서비스 **그담(G
 * 현재 상태:
 
   * ✅ API 명세 설계 완료
+  * ✅ 로컬 PostgreSQL DB 연동 완료
+  * ✅ SQLAlchemy + psycopg 기반 DB 연결 구조 구현 완료
+  * ✅ 주요 DB 테이블 생성 완료
+    * users
+    * children
+    * htp_tests
+    * chat_sessions
+    * chat_messages
+  * ✅ children / reports / chat / tests 라우터 DB 기반 전환 완료
+  * ✅ 이미지 업로드 시 uploads/ 폴더 저장 및 DB 경로 저장 구조 구현
   * ✅ 육아 상담 RAG 챗봇 1차 구현 완료
   * ✅ OpenAI Embedding + ChromaDB 기반 검색 테스트 완료
   * ✅ GPT API 기반 근거 답변 생성 테스트 완료
-  * ❌ PostgreSQL DB 연동 전
-  * ❌ YOLOv8 그림 분석 모델 API 연동 전
+  * ⚠️ `/tests/{test_id}/analyze`는 현재 실제 YOLO/GPT 연결 전 mock 분석 결과를 DB에 저장하는 상태
+  * ❌ YOLOv8 그림 분석 모델 API 정식 연동 전
   * ❌ HTP 리포트 생성 RAG 정식 연동 전
+  * ❌ 실제 사용자 인증/JWT 미적용
 
 ---
 
@@ -29,10 +40,14 @@ HTP 그림 기반 AI 심리 분석 및 육아 방향 안내 서비스 **그담(G
 * **API Documentation**: Swagger (OpenAPI)
 * **Language**: Python 3.13
 * **Environment**: venv
+* **Database**: PostgreSQL
+* **ORM**: SQLAlchemy
+* **PostgreSQL Driver**: psycopg
 * **LLM API**: OpenAI API
 * **Embedding Model**: OpenAI text-embedding 계열
 * **Vector DB**: ChromaDB
-* **Data Format**: JSON
+* **Image Upload**: Local `uploads/` directory
+* **Data Format**: JSON / JSONB
 
 ---
 
@@ -53,8 +68,17 @@ backend/
 │   │       └── parenting_chatbot/
 │   │           ├── parenting_guides.json
 │   │           └── sources.json
-│   ├── db/                  # 로컬 DB 및 ChromaDB 저장 위치
-│   │   └── chroma/
+│   ├── db/                  # DB 연결 및 ChromaDB 저장 위치
+│   │   ├── __init__.py
+│   │   ├── base.py          # SQLAlchemy Base
+│   │   ├── session.py       # DB engine, SessionLocal, get_db
+│   │   └── chroma/          # 로컬 ChromaDB 저장 위치
+│   ├── models/              # SQLAlchemy DB 모델
+│   │   ├── __init__.py
+│   │   ├── user.py
+│   │   ├── child.py
+│   │   ├── htp_test.py
+│   │   └── chat.py
 │   ├── routers/             # API 라우터
 │   │   ├── auth.py
 │   │   ├── home.py
@@ -65,22 +89,13 @@ backend/
 │   │   ├── mypage.py
 │   │   └── rag_admin.py
 │   ├── schemas/             # 요청/응답 데이터 모델
-│   │   ├── auth.py
-│   │   ├── home.py
-│   │   ├── children.py
-│   │   ├── tests.py
-│   │   ├── reports.py
-│   │   ├── chat.py
-│   │   └── mypage.py
 │   └── services/            # 비즈니스 로직 및 외부 API 연동
-│       ├── chroma_service.py
-│       ├── ingest_service.py
-│       ├── openai_service.py
-│       ├── rag_service.py
-│       ├── report_service.py
-│       └── source_service.py
 ├── scripts/
+│   ├── create_tables.py     # SQLAlchemy 모델 기반 테이블 생성
+│   ├── drop_tables.py       # 개발용 테이블 삭제
+│   ├── seed_test_data.py    # 개발용 테스트 데이터 삽입
 │   └── ingest_parenting_guides.py
+├── uploads/                 # 업로드 이미지 저장 위치, Git 제외
 ├── requirements.txt
 ├── .env.example
 └── README.md
@@ -112,6 +127,8 @@ python-dotenv
 openai
 chromadb
 pydantic
+sqlalchemy
+psycopg[binary]
 python-multipart
 ```
 
@@ -125,6 +142,8 @@ OPENAI_CHAT_MODEL=gpt-4.1-mini
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 CHROMA_PATH=./app/db/chroma
 CHROMA_COLLECTION=parenting_guides
+
+DATABASE_URL=postgresql+psycopg://gdam_user:your_db_password@localhost:5432/gdam_db
 ```
 
 `.env` 파일은 API Key가 포함되므로 GitHub에 업로드하지 않습니다.  
@@ -171,10 +190,12 @@ Swagger UI에서 전체 API 명세 및 테스트를 진행할 수 있습니다.
 * `GET /api/chat/sessions`
 * `GET /api/chat/sessions/{session_id}`
 * `POST /api/chat/sessions/{session_id}/messages`
+* `GET /api/chat/suggested-prompts`
 
 리포트 기반 상담 및 RAG 기반 육아 상담 답변을 제공합니다.
 
 현재 `POST /api/chat/sessions/{session_id}/messages`는 사용자의 질문을 받아 RAG 기반 답변을 생성하도록 연결되어 있습니다.
+추천 질문/시작 멘트는 `GET /api/chat/suggested-prompts`에서 context 기준으로 제공합니다.
 
 ### 요청 예시
 
@@ -219,7 +240,13 @@ Swagger UI에서 전체 API 명세 및 테스트를 진행할 수 있습니다.
 
 HTP 검사 진행 및 AI 분석 요청 API입니다.
 
-현재는 Mock 데이터 기반으로 API 명세를 제공합니다.
+현재 동작:
+* `POST /tests`: `htp_tests` row 생성
+* `POST /tests/{test_id}/image`: `uploads/` 폴더에 이미지 저장 후 DB에 이미지 경로 저장
+* `POST /tests/{test_id}/analyze`: 실제 YOLO/GPT 연결 전까지 mock 분석 결과를 DB에 저장
+* `GET /tests/{test_id}`: 검사 상태 및 리포트 생성 여부 조회
+
+향후 실제 YOLO/OpenCV 분석 결과와 HTP 리포트 생성 RAG를 연결할 예정입니다.
 
 ---
 
@@ -230,8 +257,10 @@ HTP 검사 진행 및 AI 분석 요청 API입니다.
 
 검사 결과 리포트 조회 API입니다.
 
-현재는 Mock 데이터 기반으로 동작합니다.  
-향후 HTP 분석 결과 및 RAG 기반 리포트 생성 결과와 연동할 예정입니다.
+현재 별도 `reports` 테이블은 만들지 않고, `htp_tests` 테이블을 리포트 저장소로 사용합니다.  
+따라서 `report_id`는 내부적으로 `htp_tests.id`와 동일하게 사용됩니다.
+
+`report_json`, `recommendations_json`을 통해 프론트의 리포트 상세 화면을 구성할 수 있습니다.
 
 ---
 
@@ -242,7 +271,10 @@ HTP 검사 진행 및 AI 분석 요청 API입니다.
 * `PATCH /children/{child_id}`
 * `DELETE /children/{child_id}`
 
-자녀 정보 관리 API입니다.
+자녀 정보 관리 API입니다.  
+현재 PostgreSQL `children` 테이블과 연동되어 실제 자녀 데이터를 저장/조회/수정/삭제합니다.
+
+현재 로그인/JWT가 미적용 상태이므로 개발 테스트용으로 `TEST_USER_ID = 1`을 사용합니다.
 
 ---
 
@@ -438,29 +470,40 @@ notes
 본 API는 현재 다음과 같은 상태입니다.
 
 * ✅ FastAPI + Swagger 기반 API 명세 구현
-* ✅ Mock API 기반 프론트엔드 개발용 엔드포인트 제공
+* ✅ 로컬 PostgreSQL DB 연동 완료
+* ✅ SQLAlchemy + psycopg 기반 DB 연결 구조 구현
+* ✅ 주요 DB 테이블 생성 완료
+  * users
+  * children
+  * htp_tests
+  * chat_sessions
+  * chat_messages
+* ✅ children / reports / chat / tests 라우터 DB 기반 전환
+* ✅ 이미지 업로드 시 `uploads/` 폴더 저장 및 DB 경로 저장 구조 구현
 * ✅ 육아 상담 RAG 챗봇 백엔드 1차 구현
 * ✅ parenting_guides.json / sources.json 기반 데이터셋 구축
 * ✅ ChromaDB 벡터 DB 저장 기능 구현
 * ✅ OpenAI embedding 기반 검색 기능 구현
 * ✅ GPT API 기반 답변 생성 기능 구현
-* ❌ PostgreSQL DB 미연동
-* ❌ YOLOv8 그림 분석 모델 미연동
+* ⚠️ `/tests/{test_id}/analyze`는 현재 실제 YOLO/GPT 연결 전 mock 분석 결과 저장 방식
+* ❌ YOLOv8 그림 분석 모델 정식 연동 전
+* ❌ HTP 리포트 생성 RAG 정식 연동 전
 * ❌ 실제 사용자 인증/JWT 미적용
-* ❌ HTP 리포트 생성 RAG 정식 미연동
+* ❌ AWS 배포 전
 
 ---
 
 # 🔜 향후 계획
 
-* PostgreSQL DB 연동
-* 사용자별 채팅 기록 저장
-* React 모바일 웹 챗봇 UI 연동
-* HTP 리포트 `report_id` 기반 context 연결
-* YOLOv8 기반 그림 분석 API 연결
-* GPT + RAG 기반 HTP 리포트 생성 기능 구현
-* 인증(JWT) 적용
+* HTP 검사 리포트 생성용 RAG 구현
+* 실제 YOLO/OpenCV 분석 결과를 `/tests/{test_id}/analyze`에 연결
+* GPT/RAG 결과를 `summary_text`, `report_text`, `report_json`, `recommendations_json` 형태로 저장
+* 육아 상담 챗봇 답변 형식 개선
+* 채팅 시 DB의 이전 메시지를 history로 활용
+* 로그인/JWT 연결 후 `TEST_USER_ID = 1` 제거
+* React 모바일 웹 UI와 API 응답 형식 최종 정렬
 * AWS EC2 배포
+* 추후 이미지 저장소를 로컬 `uploads/`에서 AWS S3로 확장
 * RAG 검색 품질 개선
   * `top_k` 조정
   * category 필터링
@@ -475,8 +518,13 @@ notes
 
 ```text
 .env
+.env.*
 .venv/
 app/db/chroma/
+uploads/
+media/
+generated/
+outputs/
 ```
 
 `.env.example`은 팀원들이 환경변수 형식을 확인할 수 있도록 업로드합니다.

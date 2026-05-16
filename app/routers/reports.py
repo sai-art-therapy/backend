@@ -1,33 +1,95 @@
-from fastapi import APIRouter
+from datetime import date
+
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy.orm import Session
+
+from app.db.session import get_db
+from app.models.child import Child
+from app.models.htp_test import HtpTest
 
 router = APIRouter()
 
+# TODO: 로그인/JWT 구현 후 실제 로그인 사용자 ID로 교체
+TEST_USER_ID = 1
+
+
+def calculate_korean_age(birth_year: int) -> int:
+    current_year = date.today().year
+    return current_year - birth_year
+
 
 @router.get("", summary="검사 리포트 목록 조회")
-def get_reports():
+def get_reports(db: Session = Depends(get_db)):
+    reports = (
+        db.query(HtpTest, Child)
+        .join(Child, HtpTest.child_id == Child.id)
+        .filter(HtpTest.user_id == TEST_USER_ID)
+        .order_by(HtpTest.test_date.desc())
+        .all()
+    )
+
     return [
         {
-            "report_id": 1,
-            "child_id": 1,
-            "child_name": "김OO",
-            "test_date": "2026-05-03",
-            "summary": "안정감을 필요로 하는 상태로 보입니다.",
-            "main_emotion": "anxiety"
+            "report_id": report.id,
+            "child_id": child.id,
+            "child_name": child.name,
+            "birth_year": child.birth_year,
+            "age": calculate_korean_age(child.birth_year),
+            "gender": child.gender,
+            "test_date": report.test_date,
+            "test_status": report.test_status,
+            "summary": report.summary_text,
+            "main_emotion": report.main_emotion,
+            "result_image_path": report.result_image_path,
         }
+        for report, child in reports
     ]
 
 
 @router.get("/{report_id}", summary="검사 리포트 상세 조회")
-def get_report_detail(report_id: int):
+def get_report_detail(report_id: int, db: Session = Depends(get_db)):
+    result = (
+        db.query(HtpTest, Child)
+        .join(Child, HtpTest.child_id == Child.id)
+        .filter(
+            HtpTest.id == report_id,
+            HtpTest.user_id == TEST_USER_ID,
+        )
+        .first()
+    )
+
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="리포트를 찾을 수 없습니다.",
+        )
+
+    report, child = result
+
     return {
-        "report_id": report_id,
-        "child_id": 1,
-        "test_date": "2026-05-03",
-        "summary": "아이는 현재 안정감을 필요로 하는 상태로 보입니다.",
-        "drawing_analysis": {
-            "house": "집의 크기와 위치에서 안정감 관련 특징이 관찰되었습니다.",
-            "tree": "나무의 형태에서 정서 표현 특징이 관찰되었습니다.",
-            "person": "사람 그림에서 자기표현 관련 특징이 관찰되었습니다."
+        "report_id": report.id,
+        "child": {
+            "child_id": child.id,
+            "name": child.name,
+            "birth_year": child.birth_year,
+            "age": calculate_korean_age(child.birth_year),
+            "gender": child.gender,
         },
-        "parenting_guide": "아이의 감정을 먼저 공감해주고 편안한 대화를 유도해주세요."
+        "test": {
+            "test_status": report.test_status,
+            "test_date": report.test_date,
+            "consent_agreed": report.consent_agreed,
+            "original_image_path": report.original_image_path,
+            "result_image_path": report.result_image_path,
+            "yolo_result_json": report.yolo_result_json,
+        },
+        "report": {
+            "summary_text": report.summary_text,
+            "main_emotion": report.main_emotion,
+            "report_text": report.report_text,
+            "report_json": report.report_json,
+            "recommendations_json": report.recommendations_json,
+        },
+        "created_at": report.created_at,
+        "updated_at": report.updated_at,
     }
