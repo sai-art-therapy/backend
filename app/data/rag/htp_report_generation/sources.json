@@ -11,19 +11,6 @@
     },
     {
       "id": "src_002",
-      "type": "journal_article",
-      "title": "HTP 리커트 평가항목 개발",
-      "author": "박희진, 정현희",
-      "journal": "미술치료연구 (Korean Journal of Art Therapy)",
-      "volume": "21",
-      "issue": "4",
-      "pages": "643-660",
-      "year": 2014,
-      "institution": "연세아이정신건강의학과 / 동의대학교 보육·가정상담학과",
-      "note": "HTP 리커트 평가항목(4점 척도) 개발·타당화 연구. 초중고 488명 대상. 7요인 33문항 확정. Cronbach α .68~.71."
-    },
-    {
-      "id": "src_003",
       "type": "book",
       "title": "HTP와 KHTP 심리진단법",
       "author": "김동연, 공마리아, 최외선",
@@ -32,7 +19,7 @@
       "note": "한국 KHTP 분야의 표준 교재. 제3장(p.198~205)에서 KHTP 그림 간 밀착·거리·순서·크기 해석 다룸. 부록 II에 KHTP 검사 보고서 양식 수록."
     },
     {
-      "id": "src_004",
+      "id": "src_003",
       "type": "book",
       "title": "그림을 통한 아동의 진단과 이해 (3판): HTP와 KFD를 중심으로",
       "author": "신민섭 외",

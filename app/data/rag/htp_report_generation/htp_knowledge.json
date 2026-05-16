@@ -338,8 +338,7 @@
       ],
       "source_ids": [
         "src_001",
-        "src_002",
-        "src_004"
+        "src_003"
       ],
       "test_format": "KHTP"
     },
@@ -412,8 +411,7 @@
       ],
       "source_ids": [
         "src_001",
-        "src_002",
-        "src_004"
+        "src_003"
       ],
       "test_format": "KHTP"
     },
@@ -456,8 +454,7 @@
         "우울"
       ],
       "source_ids": [
-        "src_001",
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -552,8 +549,7 @@
         "강박"
       ],
       "source_ids": [
-        "src_001",
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -665,8 +661,7 @@
       ],
       "source_ids": [
         "src_001",
-        "src_002",
-        "src_004"
+        "src_003"
       ],
       "test_format": "KHTP"
     },
@@ -785,8 +780,7 @@
         "상징"
       ],
       "source_ids": [
-        "src_001",
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -1034,8 +1028,7 @@
         "상징"
       ],
       "source_ids": [
-        "src_001",
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -1231,8 +1224,7 @@
         "상징"
       ],
       "source_ids": [
-        "src_001",
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
@@ -1756,7 +1748,7 @@
       "test_format": "KHTP"
     },
     {
-      "id": "htp_050",
+      "id": "htp_049",
       "section": "psychological_signal",
       "subsection": "애정 욕구",
       "title": "심리신호 - 애정 욕구",
@@ -1780,7 +1772,7 @@
       "test_format": "KHTP"
     },
     {
-      "id": "htp_051",
+      "id": "htp_050",
       "section": "psychological_signal",
       "subsection": "불안·긴장",
       "title": "심리신호 - 불안·긴장",
@@ -1804,7 +1796,7 @@
       "test_format": "KHTP"
     },
     {
-      "id": "htp_052",
+      "id": "htp_051",
       "section": "psychological_signal",
       "subsection": "위축·우울",
       "title": "심리신호 - 위축·우울",
@@ -1829,7 +1821,7 @@
       "test_format": "KHTP"
     },
     {
-      "id": "htp_053",
+      "id": "htp_052",
       "section": "psychological_signal",
       "subsection": "자율성·독립 욕구",
       "title": "심리신호 - 자율성·독립 욕구",
@@ -1851,7 +1843,7 @@
       "test_format": "KHTP"
     },
     {
-      "id": "htp_054",
+      "id": "htp_053",
       "section": "psychological_signal",
       "subsection": "충동·공격성",
       "title": "심리신호 - 충동·공격성",
@@ -1874,7 +1866,7 @@
       "test_format": "KHTP"
     },
     {
-      "id": "htp_055",
+      "id": "htp_054",
       "section": "psychological_signal",
       "subsection": "가족 갈등·애정 결핍",
       "title": "심리신호 - 가족 갈등·애정 결핍",
@@ -1896,7 +1888,7 @@
       "test_format": "KHTP"
     },
     {
-      "id": "htp_056",
+      "id": "htp_055",
       "section": "psychological_signal",
       "subsection": "공상·내향성",
       "title": "심리신호 - 공상·내향성",
@@ -1919,7 +1911,7 @@
       "test_format": "KHTP"
     },
     {
-      "id": "htp_057",
+      "id": "htp_056",
       "section": "report",
       "subsection": "generation_guide",
       "title": "리포트 작성 원칙 및 구조",
@@ -1958,7 +1950,7 @@
       "test_format": "KHTP"
     },
     {
-      "id": "htp_058",
+      "id": "htp_057",
       "section": "combined_features",
       "subsection": "size_position",
       "title": "크기+위치 조합 해석",
@@ -2025,13 +2017,12 @@
         "자존감"
       ],
       "source_ids": [
-        "src_001",
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
     {
-      "id": "htp_059",
+      "id": "htp_058",
       "section": "combined_features",
       "subsection": "direction_body",
       "title": "방향+신체구조 조합 해석",
@@ -2077,7 +2068,7 @@
       "test_format": "KHTP"
     },
     {
-      "id": "htp_060",
+      "id": "htp_059",
       "section": "combined_features",
       "subsection": "line_pressure_region",
       "title": "필압+부위 조합 해석",
@@ -2127,13 +2118,34 @@
         "현실접촉"
       ],
       "source_ids": [
-        "src_001",
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
     {
-      "id": "htp_062",
+      "id": "htp_060",
+      "title": "KHTP 밀착(enclosure) 개념과 심리적 의미",
+      "section": "khtp_relationships",
+      "source_ids": [
+        "src_002"
+      ],
+      "content": {
+        "concept": "KHTP에서 밀착(enclosure)이란 집·나무·사람 그림이 서로 겹치거나 닿아 있는 상태를 말한다. 한 종이에 세 요소를 함께 그리는 KHTP 특성상, 요소 간 공간 관계가 심리적 의미를 갖는다.",
+        "psychological_meaning": "밀착은 그림을 그린 사람이 생활 속 중요한 일들을 분리하거나 해결하지 못하고 있음을 반영한다. 순탄한 삶의 방향을 잡지 못하는 사람은 만성적으로 불만족스러운 상태를 보이는 경향이 있다.",
+        "general_principle": "일반적으로 밀착은 심리적 성장을 방해하는 요인으로 해석된다. 심리적으로 성숙한 사람은 요소 간 밀착 없이 적절한 거리를 두고 그리는 경향이 있다.",
+        "enclosure_types": {
+          "H-T": "집과 나무의 밀착. 가족 환경(집)과 개인적 성장(나무)이 분리되지 않는 상태를 나타낼 수 있다.",
+          "H-P": "집과 사람의 밀착. 자기상(사람)이 가족(집)으로부터 심리적으로 독립하지 못하는 상태를 반영할 수 있다.",
+          "P-T": "사람과 나무의 밀착. 자기상과 개인적 성장/생활 에너지가 얽혀 있는 상태를 시사할 수 있다.",
+          "H-T-P": "세 요소 모두 밀착. 생활 전반에서 분리와 독립이 어려운 상태를 반영한다.",
+          "none": "밀착 없음. 요소 간 적절한 거리가 유지되어 있으며, 건강한 분리와 독립적 성장을 시사한다."
+        },
+        "clinical_note": "밀착 여부를 판단할 때는 요소가 실제로 겹치거나 닿아 있는지를 기준으로 한다. 단순히 가까이 있는 것과 실제 밀착은 구분해야 한다. 밀착이 없더라도 사람이 집이나 나무를 향해 움직이는 방향 등을 함께 고려해야 한다.",
+        "age_note": "본 해석 원리는 김동연 외(2002) 책의 사례들이 주로 청소년~성인(19~46세)을 대상으로 한다는 점을 고려해야 한다. 미취학 아동(만 6세 이하)의 경우 부모·가족과의 심리적 밀착은 발달적으로 자연스러운 정상 상태이며, 이를 '심리적 미분리'나 '성장 방해'로 해석하면 안 된다. 초등학교 저학년(만 7~9세)에서도 가족 밀착은 흔하게 관찰되며, 병리적 해석은 다른 임상적 신호(예: 매우 두꺼운 밀착선, 불안 신호 동반)가 함께 있을 때만 신중하게 검토한다."
+      }
+    },
+    {
+      "id": "htp_061",
       "section": "combined_features",
       "subsection": "position_cutoff",
       "title": "위치+절단 조합 해석",
@@ -2190,13 +2202,12 @@
         "충동성"
       ],
       "source_ids": [
-        "src_001",
-        "src_002"
+        "src_001"
       ],
       "test_format": "KHTP"
     },
     {
-      "id": "htp_063",
+      "id": "htp_062",
       "section": "combined_features",
       "subsection": "tree_structure",
       "title": "나무 내부 구조 불균형 해석",
@@ -2252,33 +2263,11 @@
       "test_format": "KHTP"
     },
     {
-      "id": "htp_061",
-      "title": "KHTP 밀착(enclosure) 개념과 심리적 의미",
-      "section": "khtp_relationships",
-      "source_ids": [
-        "src_003"
-      ],
-      "content": {
-        "concept": "KHTP에서 밀착(enclosure)이란 집·나무·사람 그림이 서로 겹치거나 닿아 있는 상태를 말한다. 한 종이에 세 요소를 함께 그리는 KHTP 특성상, 요소 간 공간 관계가 심리적 의미를 갖는다.",
-        "psychological_meaning": "밀착은 그림을 그린 사람이 생활 속 중요한 일들을 분리하거나 해결하지 못하고 있음을 반영한다. 순탄한 삶의 방향을 잡지 못하는 사람은 만성적으로 불만족스러운 상태를 보이는 경향이 있다.",
-        "general_principle": "일반적으로 밀착은 심리적 성장을 방해하는 요인으로 해석된다. 심리적으로 성숙한 사람은 요소 간 밀착 없이 적절한 거리를 두고 그리는 경향이 있다.",
-        "enclosure_types": {
-          "H-T": "집과 나무의 밀착. 가족 환경(집)과 개인적 성장(나무)이 분리되지 않는 상태를 나타낼 수 있다.",
-          "H-P": "집과 사람의 밀착. 자기상(사람)이 가족(집)으로부터 심리적으로 독립하지 못하는 상태를 반영할 수 있다.",
-          "P-T": "사람과 나무의 밀착. 자기상과 개인적 성장/생활 에너지가 얽혀 있는 상태를 시사할 수 있다.",
-          "H-T-P": "세 요소 모두 밀착. 생활 전반에서 분리와 독립이 어려운 상태를 반영한다.",
-          "none": "밀착 없음. 요소 간 적절한 거리가 유지되어 있으며, 건강한 분리와 독립적 성장을 시사한다."
-        },
-        "clinical_note": "밀착 여부를 판단할 때는 요소가 실제로 겹치거나 닿아 있는지를 기준으로 한다. 단순히 가까이 있는 것과 실제 밀착은 구분해야 한다. 밀착이 없더라도 사람이 집이나 나무를 향해 움직이는 방향 등을 함께 고려해야 한다.",
-        "age_note": "본 해석 원리는 김동연 외(2002) 책의 사례들이 주로 청소년~성인(19~46세)을 대상으로 한다는 점을 고려해야 한다. 미취학 아동(만 6세 이하)의 경우 부모·가족과의 심리적 밀착은 발달적으로 자연스러운 정상 상태이며, 이를 '심리적 미분리'나 '성장 방해'로 해석하면 안 된다. 초등학교 저학년(만 7~9세)에서도 가족 밀착은 흔하게 관찰되며, 병리적 해석은 다른 임상적 신호(예: 매우 두꺼운 밀착선, 불안 신호 동반)가 함께 있을 때만 신중하게 검토한다."
-      }
-    },
-    {
-      "id": "htp_064",
+      "id": "htp_063",
       "title": "KHTP 밀착 평가 체크리스트",
       "section": "khtp_relationships",
       "source_ids": [
-        "src_003"
+        "src_002"
       ],
       "content": {
         "description": "KHTP 그림에서 밀착 여부를 체계적으로 평가하기 위한 체크리스트. 김동연 외(2002) KHTP 보고서 양식 기반.",
@@ -2323,11 +2312,11 @@
       }
     },
     {
-      "id": "htp_065",
+      "id": "htp_064",
       "title": "아동 그림 해석의 발달적 원칙",
       "section": "developmental",
       "source_ids": [
-        "src_004"
+        "src_003"
       ],
       "content": {
         "principle": "아동은 신체·인지·정서·성격이 모두 발달 과정에 있는 존재이므로, 아동 그림을 해석할 때는 성인 그림 해석과 달리 발달적 측면을 반드시 고려해야 한다. 발달 단계를 무시하고 성인 기준의 해석 틀을 적용하면 정상적인 미성숙을 병리로 오인할 위험이 있다.",
@@ -2341,11 +2330,11 @@
       }
     },
     {
-      "id": "htp_066",
+      "id": "htp_065",
       "title": "발달 1단계: 무질서한 낙서 시기 (18개월~3세)",
       "section": "developmental",
       "source_ids": [
-        "src_004"
+        "src_003"
       ],
       "content": {
         "age_range": "약 18개월 ~ 3세",
@@ -2367,11 +2356,11 @@
       }
     },
     {
-      "id": "htp_067",
+      "id": "htp_066",
       "title": "발달 2단계: 기본 사물 형태가 갖추어지는 시기 (3~4세)",
       "section": "developmental",
       "source_ids": [
-        "src_004"
+        "src_003"
       ],
       "content": {
         "age_range": "약 3 ~ 4세",
@@ -2392,11 +2381,11 @@
       }
     },
     {
-      "id": "htp_068",
+      "id": "htp_067",
       "title": "발달 3단계: 사람을 그릴 수 있고 내적 도식이 형성되는 시기 (4~6세)",
       "section": "developmental",
       "source_ids": [
-        "src_004"
+        "src_003"
       ],
       "content": {
         "age_range": "약 4 ~ 6세 (미취학 아동 핵심 시기)",
@@ -2424,11 +2413,11 @@
       }
     },
     {
-      "id": "htp_069",
+      "id": "htp_068",
       "title": "발달 4단계: 시각적 도식의 발달 시기 (6~9세)",
       "section": "developmental",
       "source_ids": [
-        "src_004"
+        "src_003"
       ],
       "content": {
         "age_range": "약 6 ~ 9세 (초등 저학년 핵심 시기)",
@@ -2458,11 +2447,11 @@
       }
     },
     {
-      "id": "htp_070",
+      "id": "htp_069",
       "title": "발달 5단계: 현실주의 시기 (9~12세)",
       "section": "developmental",
       "source_ids": [
-        "src_004"
+        "src_003"
       ],
       "content": {
         "age_range": "약 9 ~ 12세 (초등 고학년)",
@@ -2487,11 +2476,11 @@
       }
     },
     {
-      "id": "htp_071",
+      "id": "htp_070",
       "title": "아동 그림 해석의 기본 지침: 일대일 해석 금지",
       "section": "framework",
       "source_ids": [
-        "src_004"
+        "src_003"
       ],
       "content": {
         "core_principle": "아동 그림 해석에서 가장 유념해야 할 점은 절대로 일대일 해석을 해서는 안 된다는 것이다. 그림의 한 요소를 하나의 심리적 의미와 직접 연결하는 'A이면 B이다' 식의 해석은 금기다.",
@@ -2511,11 +2500,11 @@
       }
     },
     {
-      "id": "htp_072",
+      "id": "htp_071",
       "title": "인상주의적 해석 vs 구조적 해석",
       "section": "framework",
       "source_ids": [
-        "src_004"
+        "src_003"
       ],
       "content": {
         "two_approaches": "아동 그림 해석에는 두 가지 보완적 방법이 있으며, 임상 실제에서는 두 가지를 종합하여 사용한다.",
@@ -2548,11 +2537,11 @@
       }
     },
     {
-      "id": "htp_073",
+      "id": "htp_072",
       "title": "투명성(transparency)의 발달적 해석",
       "section": "structural",
       "source_ids": [
-        "src_004"
+        "src_003"
       ],
       "content": {
         "definition": "투명성이란 그림에서 가려져야 할 부분이 보이게 그리는 표현을 말한다. 예: 사람을 그렸는데 내장이 보이게 그리거나, 옷을 입은 그림인데 유방이나 배꼽이 비치게 보이는 경우.",
@@ -2572,11 +2561,11 @@
       }
     },
     {
-      "id": "htp_074",
+      "id": "htp_073",
       "title": "부가물(Addition) 해석",
       "section": "structural",
       "source_ids": [
-        "src_004"
+        "src_003"
       ],
       "content": {
         "definition": "부가물이란 검사 지시에 없었던 사물을 그림에 덧붙여 그린 경우를 말한다. 예: 집을 그리라고 했는데 산이나 해를 덧붙여 그리거나, 사람을 그리라고 했는데 의자나 자동차를 함께 그리는 경우.",
@@ -2643,11 +2632,11 @@
       }
     },
     {
-      "id": "htp_075",
+      "id": "htp_074",
       "title": "음영 처리(Shading) 해석",
       "section": "structural",
       "source_ids": [
-        "src_004"
+        "src_003"
       ],
       "content": {
         "definition": "그림에서 선에 음영을 넣은 것처럼 어둡게 표현하는 경우. 연필을 옆으로 눕혀 칠하거나, 같은 부분을 반복해서 진하게 그려 어두운 느낌을 주는 표현 방식.",
