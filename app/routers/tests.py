@@ -1,6 +1,6 @@
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional
+from typing import List
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -9,21 +9,22 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.child import Child
+from app.models.htp_pdi import HtpPdiInteraction
+from app.models.htp_test import HtpTest
+from app.services.htp_analysis_service import (
+    analyze_htp_image_mock,
+    get_pdi_choice_payload,
+)
+from app.services.htp_rag_service import search_htp_knowledge_for_report
+from app.services.htp_report_service import (
+    apply_report_to_test,
+    create_mock_htp_report,
+)
 from app.services.pdi_service import (
     create_mock_pdi_questions,
     format_pdi_questions,
     save_pdi_answers as save_pdi_answers_service,
     skip_pdi as skip_pdi_service,
-)
-from app.models.htp_test import HtpTest
-from app.models.htp_pdi import HtpPdiInteraction
-from app.services.htp_analysis_service import (
-    analyze_htp_image_mock,
-    get_pdi_choice_payload,
-)
-from app.services.htp_report_service import (
-    apply_report_to_test,
-    create_mock_htp_report,
 )
 
 router = APIRouter()
@@ -161,20 +162,16 @@ def analyze_test_image(test_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="분석할 이미지가 업로드되지 않았습니다.",
         )
-    
+
     HTP_RESULT_DIR.mkdir(parents=True, exist_ok=True)
 
     analysis_result = analyze_htp_image_mock(htp_test.original_image_path)
 
-    result_image_path = analysis_result["result_image_path"]
-    mock_yolo_result = analysis_result["yolo_result_json"]
-    mock_visual_features = analysis_result["visual_features_json"]
-
     htp_test.test_status = "pdi_choice_pending"
     htp_test.pdi_status = "not_started"
-    htp_test.result_image_path = result_image_path
-    htp_test.yolo_result_json = mock_yolo_result
-    htp_test.visual_features_json = mock_visual_features
+    htp_test.result_image_path = analysis_result["result_image_path"]
+    htp_test.yolo_result_json = analysis_result["yolo_result_json"]
+    htp_test.visual_features_json = analysis_result["visual_features_json"]
 
     # 이전 mock 리포트가 남아있을 수 있으므로 초기화
     htp_test.summary_text = None
@@ -192,7 +189,7 @@ def analyze_test_image(test_id: int, db: Session = Depends(get_db)):
         "test_status": htp_test.test_status,
         "pdi_status": htp_test.pdi_status,
         "result_image_path": htp_test.result_image_path,
-        "display_detections": mock_yolo_result["display_detections"],
+        "display_detections": analysis_result["display_detections"],
         "pdi_choice": get_pdi_choice_payload(),
         "message": "이미지 분석이 완료되었습니다. PDI 진행 여부를 선택해주세요.",
     }
@@ -311,9 +308,15 @@ def generate_report(test_id: int, db: Session = Depends(get_db)):
         .all()
     )
 
+    retrieved_knowledge = search_htp_knowledge_for_report(
+        htp_test=htp_test,
+        pdi_interactions=pdi_interactions,
+    )
+
     report_json = create_mock_htp_report(
         htp_test=htp_test,
         pdi_interactions=pdi_interactions,
+        retrieved_knowledge=retrieved_knowledge,
     )
 
     apply_report_to_test(
@@ -331,6 +334,7 @@ def generate_report(test_id: int, db: Session = Depends(get_db)):
         "report_id": htp_test.id,
         "summary_text": htp_test.summary_text,
         "main_emotion": htp_test.main_emotion,
+        "rag": report_json.get("rag"),
         "message": "HTP 리포트가 생성되었습니다.",
     }
 

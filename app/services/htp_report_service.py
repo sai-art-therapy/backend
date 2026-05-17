@@ -14,9 +14,28 @@ def build_pdi_evidence(pdi_interactions: list[HtpPdiInteraction]) -> list[dict]:
     ]
 
 
+def build_rag_summary(retrieved_knowledge: list[dict]) -> dict:
+    """report_json에 저장할 RAG 검색 결과 요약."""
+    return {
+        "collection": "htp_knowledge",
+        "retrieved_count": len(retrieved_knowledge),
+        "top_chunks": [
+            {
+                "id": item.get("id"),
+                "title": item.get("metadata", {}).get("title"),
+                "section": item.get("metadata", {}).get("section"),
+                "subsection": item.get("metadata", {}).get("subsection"),
+                "distance": item.get("distance"),
+            }
+            for item in retrieved_knowledge[:5]
+        ],
+    }
+
+
 def create_mock_htp_report(
     htp_test: HtpTest,
     pdi_interactions: list[HtpPdiInteraction],
+    retrieved_knowledge: list[dict] | None = None,
 ) -> dict:
     """개발 테스트용 HTP 리포트 생성.
 
@@ -25,6 +44,8 @@ def create_mock_htp_report(
     2. htp_knowledge collection 검색
     3. GPT로 structured report_json 생성
     """
+    retrieved_knowledge = retrieved_knowledge or []
+
     pdi_used = htp_test.pdi_status == "completed"
     analysis_mode = "with_pdi" if pdi_used else "without_pdi"
     confidence_level = "medium" if pdi_used else "low"
@@ -54,11 +75,14 @@ def create_mock_htp_report(
             "interactions_count": len(pdi_evidence),
             "summary": pdi_notice,
         },
+        "rag": build_rag_summary(retrieved_knowledge),
         "visualization": {
             "image_path": htp_test.result_image_path,
-            "display_bboxes": htp_test.yolo_result_json.get("display_detections", [])
-            if htp_test.yolo_result_json
-            else [],
+            "display_bboxes": (
+                htp_test.yolo_result_json.get("display_detections", [])
+                if htp_test.yolo_result_json
+                else []
+            ),
         },
         "tabs": {
             "house": {
