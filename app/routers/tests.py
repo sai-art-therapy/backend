@@ -11,6 +11,10 @@ from app.db.session import get_db
 from app.models.child import Child
 from app.models.htp_pdi import HtpPdiInteraction
 from app.models.htp_test import HtpTest
+from app.services.htp_analysis_service import (
+    analyze_htp_image_mock,
+    get_pdi_choice_payload,
+)
 
 router = APIRouter()
 
@@ -147,119 +151,14 @@ def analyze_test_image(test_id: int, db: Session = Depends(get_db)):
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="분석할 이미지가 업로드되지 않았습니다.",
         )
-
+    
     HTP_RESULT_DIR.mkdir(parents=True, exist_ok=True)
 
-    # TODO: 실제 YOLO/OpenCV 결과 이미지 생성 후 result_image_path에 저장
-    # 현재는 개발 테스트용으로 원본 이미지 경로를 결과 경로처럼 사용
-    result_image_path = htp_test.original_image_path
+    analysis_result = analyze_htp_image_mock(htp_test.original_image_path)
 
-    # TODO: YOLO fine-tuned model 결과로 교체
-    mock_yolo_result = {
-        "model": "mock-yolo-htp",
-        "all_detections": [
-            {
-                "label": "house_total",
-                "display_label": "집",
-                "confidence": 0.92,
-                "bbox": {"x1": 10, "y1": 20, "x2": 100, "y2": 120},
-                "use_for_display": True,
-                "use_for_analysis": True,
-            },
-            {
-                "label": "tree_total",
-                "display_label": "나무",
-                "confidence": 0.88,
-                "bbox": {"x1": 140, "y1": 30, "x2": 220, "y2": 180},
-                "use_for_display": True,
-                "use_for_analysis": True,
-            },
-            {
-                "label": "person_total",
-                "display_label": "사람",
-                "confidence": 0.85,
-                "bbox": {"x1": 240, "y1": 50, "x2": 320, "y2": 220},
-                "use_for_display": True,
-                "use_for_analysis": True,
-            },
-            {
-                "label": "window",
-                "display_label": "창문",
-                "confidence": 0.80,
-                "bbox": {"x1": 35, "y1": 55, "x2": 55, "y2": 75},
-                "use_for_display": False,
-                "use_for_analysis": True,
-            },
-        ],
-        "display_detections": [
-            {
-                "type": "house",
-                "label": "집",
-                "bbox": {"x1": 10, "y1": 20, "x2": 100, "y2": 120},
-            },
-            {
-                "type": "tree",
-                "label": "나무",
-                "bbox": {"x1": 140, "y1": 30, "x2": 220, "y2": 180},
-            },
-            {
-                "type": "person",
-                "label": "사람",
-                "bbox": {"x1": 240, "y1": 50, "x2": 320, "y2": 220},
-            },
-        ],
-    }
-
-    # TODO: 실제 OpenCV feature 추출 결과로 교체
-    mock_visual_features = {
-        "global": {
-            "image_width": 1280,
-            "image_height": 1280,
-            "drawing_area_ratio": 0.42,
-            "overall_position": {"x": "center", "y": "middle"},
-            "overall_line_density": "medium",
-        },
-        "house": {
-            "detected": True,
-            "relative_size": "medium",
-            "position": {"x": "left", "y": "middle"},
-            "parts": {
-                "door": {"detected": False},
-                "window": {"count": 1},
-                "roof": {"detected": True},
-            },
-            "tags": ["house_detected", "door_not_detected", "window_present"],
-        },
-        "tree": {
-            "detected": True,
-            "relative_size": "medium",
-            "position": {"x": "center", "y": "middle"},
-            "parts": {
-                "trunk": {"detected": True},
-                "crown": {"detected": True},
-                "roots": {"detected": False},
-            },
-            "tags": ["tree_detected", "roots_not_detected"],
-        },
-        "person": {
-            "detected": True,
-            "relative_size": "small",
-            "position": {"x": "right", "y": "middle"},
-            "parts": {
-                "head": {"detected": True},
-                "face": {"detected": True},
-                "hands": {"count": 0},
-                "feet": {"count": 0},
-            },
-            "tags": ["person_detected", "small_person", "hands_not_detected"],
-        },
-        "relationships": {
-            "house_tree": {"overlap": False, "touching": False, "distance_level": "near"},
-            "house_person": {"overlap": False, "touching": False, "distance_level": "far"},
-            "tree_person": {"overlap": False, "touching": False, "distance_level": "near"},
-            "enclosure_type": "none",
-        },
-    }
+    result_image_path = analysis_result["result_image_path"]
+    mock_yolo_result = analysis_result["yolo_result_json"]
+    mock_visual_features = analysis_result["visual_features_json"]
 
     htp_test.test_status = "pdi_choice_pending"
     htp_test.pdi_status = "not_started"
@@ -284,23 +183,7 @@ def analyze_test_image(test_id: int, db: Session = Depends(get_db)):
         "pdi_status": htp_test.pdi_status,
         "result_image_path": htp_test.result_image_path,
         "display_detections": mock_yolo_result["display_detections"],
-        "pdi_choice": {
-            "title": "아이에게 몇 가지 질문을 해볼까요?",
-            "description": (
-                "아이의 답변을 함께 반영하면 그림의 의미를 더 조심스럽고 풍부하게 "
-                "해석할 수 있어요. 지금 아이에게 질문하기 어려운 상황이라면 건너뛰어도 됩니다."
-            ),
-            "options": [
-                {
-                    "value": "start_pdi",
-                    "label": "질문하고 답변 입력하기",
-                },
-                {
-                    "value": "skip_pdi",
-                    "label": "건너뛰고 리포트 보기",
-                },
-            ],
-        },
+        "pdi_choice": get_pdi_choice_payload(),
         "message": "이미지 분석이 완료되었습니다. PDI 진행 여부를 선택해주세요.",
     }
 
