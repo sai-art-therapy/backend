@@ -23,7 +23,10 @@ def get_reports(db: Session = Depends(get_db)):
     reports = (
         db.query(HtpTest, Child)
         .join(Child, HtpTest.child_id == Child.id)
-        .filter(HtpTest.user_id == TEST_USER_ID)
+        .filter(
+            HtpTest.user_id == TEST_USER_ID,
+            HtpTest.test_status == "completed",
+        )
         .order_by(HtpTest.test_date.desc())
         .all()
     )
@@ -31,6 +34,7 @@ def get_reports(db: Session = Depends(get_db)):
     return [
         {
             "report_id": report.id,
+            "test_id": report.id,
             "child_id": child.id,
             "child_name": child.name,
             "birth_year": child.birth_year,
@@ -38,9 +42,27 @@ def get_reports(db: Session = Depends(get_db)):
             "gender": child.gender,
             "test_date": report.test_date,
             "test_status": report.test_status,
-            "summary": report.summary_text,
+            "pdi_status": report.pdi_status,
+            "summary_text": report.summary_text,
             "main_emotion": report.main_emotion,
             "result_image_path": report.result_image_path,
+            "analysis_mode": (
+                report.report_json.get("summary", {}).get("analysis_mode")
+                if report.report_json
+                else None
+            ),
+            "pdi_used": (
+                report.report_json.get("summary", {}).get("pdi_used")
+                if report.report_json
+                else None
+            ),
+            "confidence_level": (
+                report.report_json.get("summary", {}).get("confidence_level")
+                if report.report_json
+                else None
+            ),
+            "created_at": report.created_at,
+            "updated_at": report.updated_at,
         }
         for report, child in reports
     ]
@@ -66,8 +88,15 @@ def get_report_detail(report_id: int, db: Session = Depends(get_db)):
 
     report, child = result
 
+    if report.test_status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="아직 리포트 생성이 완료되지 않은 검사입니다.",
+        )
+
     return {
         "report_id": report.id,
+        "test_id": report.id,
         "child": {
             "child_id": child.id,
             "name": child.name,
@@ -77,11 +106,16 @@ def get_report_detail(report_id: int, db: Session = Depends(get_db)):
         },
         "test": {
             "test_status": report.test_status,
+            "pdi_status": report.pdi_status,
             "test_date": report.test_date,
             "consent_agreed": report.consent_agreed,
             "original_image_path": report.original_image_path,
             "result_image_path": report.result_image_path,
+        },
+        "analysis": {
             "yolo_result_json": report.yolo_result_json,
+            "visual_features_json": report.visual_features_json,
+            "pdi_summary_json": report.pdi_summary_json,
         },
         "report": {
             "summary_text": report.summary_text,

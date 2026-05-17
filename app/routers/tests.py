@@ -1,6 +1,6 @@
 from datetime import datetime
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.child import Child
+from app.models.htp_pdi import HtpPdiInteraction
 from app.models.htp_test import HtpTest
 
 router = APIRouter()
@@ -27,13 +28,32 @@ class TestCreateRequest(BaseModel):
     test_type: str = "HTP"
 
 
-class AnswerItem(BaseModel):
+class PdiAnswerItem(BaseModel):
     question_id: int
-    answer: str
+    answer_text: str
 
 
-class AnswerSaveRequest(BaseModel):
-    answers: List[AnswerItem]
+class PdiAnswerSaveRequest(BaseModel):
+    answers: List[PdiAnswerItem]
+
+
+def get_test_or_404(test_id: int, db: Session) -> HtpTest:
+    htp_test = (
+        db.query(HtpTest)
+        .filter(
+            HtpTest.id == test_id,
+            HtpTest.user_id == TEST_USER_ID,
+        )
+        .first()
+    )
+
+    if htp_test is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="검사 정보를 찾을 수 없습니다.",
+        )
+
+    return htp_test
 
 
 @router.post("", summary="검사 시작", status_code=status.HTTP_201_CREATED)
@@ -66,6 +86,7 @@ def create_test(request: TestCreateRequest, db: Session = Depends(get_db)):
         test_date=datetime.utcnow(),
         consent_agreed=True,
         consent_agreed_at=datetime.utcnow(),
+        pdi_status="not_started",
     )
 
     db.add(htp_test)
@@ -76,6 +97,7 @@ def create_test(request: TestCreateRequest, db: Session = Depends(get_db)):
         "test_id": htp_test.id,
         "child_id": htp_test.child_id,
         "test_status": htp_test.test_status,
+        "pdi_status": htp_test.pdi_status,
         "consent_agreed": htp_test.consent_agreed,
         "created_at": htp_test.created_at,
         "message": "검사가 시작되었습니다.",
@@ -88,20 +110,7 @@ def upload_test_image(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ):
-    htp_test = (
-        db.query(HtpTest)
-        .filter(
-            HtpTest.id == test_id,
-            HtpTest.user_id == TEST_USER_ID,
-        )
-        .first()
-    )
-
-    if htp_test is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="검사 정보를 찾을 수 없습니다.",
-        )
+    htp_test = get_test_or_404(test_id, db)
 
     HTP_ORIGINAL_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -124,91 +133,14 @@ def upload_test_image(
         "filename": original_filename,
         "saved_path": htp_test.original_image_path,
         "test_status": htp_test.test_status,
+        "pdi_status": htp_test.pdi_status,
         "message": "이미지 업로드 완료",
     }
 
 
-@router.get("/{test_id}/questions", summary="그림 기반 추가 질문 조회")
-def get_test_questions(test_id: int, db: Session = Depends(get_db)):
-    htp_test = (
-        db.query(HtpTest)
-        .filter(
-            HtpTest.id == test_id,
-            HtpTest.user_id == TEST_USER_ID,
-        )
-        .first()
-    )
-
-    if htp_test is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="검사 정보를 찾을 수 없습니다.",
-        )
-
-    return {
-        "test_id": test_id,
-        "questions": [
-            {
-                "question_id": 1,
-                "question": "이 그림을 그릴 때 아이가 어떤 이야기를 했나요?",
-            },
-            {
-                "question_id": 2,
-                "question": "그림 속 사람은 어떤 기분이라고 했나요?",
-            },
-            {
-                "question_id": 3,
-                "question": "그림에서 가장 마음에 드는 부분은 무엇이라고 했나요?",
-            },
-        ],
-    }
-
-
-@router.post("/{test_id}/answers", summary="추가 질문 답변 저장")
-def save_test_answers(
-    test_id: int,
-    request: AnswerSaveRequest,
-    db: Session = Depends(get_db),
-):
-    htp_test = (
-        db.query(HtpTest)
-        .filter(
-            HtpTest.id == test_id,
-            HtpTest.user_id == TEST_USER_ID,
-        )
-        .first()
-    )
-
-    if htp_test is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="검사 정보를 찾을 수 없습니다.",
-        )
-
-    # TODO: 추후 test_answers 테이블을 만들면 실제 답변 저장으로 변경
-    return {
-        "test_id": test_id,
-        "saved_count": len(request.answers),
-        "message": "답변 저장 완료",
-    }
-
-
-@router.post("/{test_id}/analyze", summary="AI 심리 분석 요청")
-def analyze_test(test_id: int, db: Session = Depends(get_db)):
-    htp_test = (
-        db.query(HtpTest)
-        .filter(
-            HtpTest.id == test_id,
-            HtpTest.user_id == TEST_USER_ID,
-        )
-        .first()
-    )
-
-    if htp_test is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="검사 정보를 찾을 수 없습니다.",
-        )
+@router.post("/{test_id}/analyze", summary="HTP 이미지 분석 및 PDI 선택 대기")
+def analyze_test_image(test_id: int, db: Session = Depends(get_db)):
+    htp_test = get_test_or_404(test_id, db)
 
     if not htp_test.original_image_path:
         raise HTTPException(
@@ -222,87 +154,521 @@ def analyze_test(test_id: int, db: Session = Depends(get_db)):
     # 현재는 개발 테스트용으로 원본 이미지 경로를 결과 경로처럼 사용
     result_image_path = htp_test.original_image_path
 
+    # TODO: YOLO fine-tuned model 결과로 교체
     mock_yolo_result = {
-        "objects": [
+        "model": "mock-yolo-htp",
+        "all_detections": [
             {
-                "label": "house",
+                "label": "house_total",
+                "display_label": "집",
                 "confidence": 0.92,
-                "bbox": [10, 20, 100, 120],
+                "bbox": {"x1": 10, "y1": 20, "x2": 100, "y2": 120},
+                "use_for_display": True,
+                "use_for_analysis": True,
             },
             {
-                "label": "tree",
+                "label": "tree_total",
+                "display_label": "나무",
                 "confidence": 0.88,
-                "bbox": [140, 30, 220, 180],
+                "bbox": {"x1": 140, "y1": 30, "x2": 220, "y2": 180},
+                "use_for_display": True,
+                "use_for_analysis": True,
             },
             {
-                "label": "person",
+                "label": "person_total",
+                "display_label": "사람",
                 "confidence": 0.85,
-                "bbox": [240, 50, 320, 220],
+                "bbox": {"x1": 240, "y1": 50, "x2": 320, "y2": 220},
+                "use_for_display": True,
+                "use_for_analysis": True,
             },
-        ]
-    }
-
-    mock_report_json = {
-        "title": "아이의 마음 이야기",
-        "summary": "전반적으로 안정적인 정서 기반을 갖추고 있으며, 자기표현과 가족 인식에서 긍정적인 특징이 관찰됩니다.",
-        "elements": {
-            "house": {
+            {
+                "label": "window",
+                "display_label": "창문",
+                "confidence": 0.80,
+                "bbox": {"x1": 35, "y1": 55, "x2": 55, "y2": 75},
+                "use_for_display": False,
+                "use_for_analysis": True,
+            },
+        ],
+        "display_detections": [
+            {
+                "type": "house",
                 "label": "집",
-                "category": "정서・가족 인식",
-                "status": "양호",
-                "basis": "집 그림 기반",
-                "description": "문과 창문이 적절한 크기로 표현되어 타인에게 열려 있는 태도를 보여줄 수 있습니다.",
-                "tags": ["개방적 태도", "안정적 가족감", "감정 표현 점검"],
-                "bbox": [10, 20, 100, 120],
-                "image_path": result_image_path,
+                "bbox": {"x1": 10, "y1": 20, "x2": 100, "y2": 120},
             },
-            "tree": {
+            {
+                "type": "tree",
                 "label": "나무",
-                "category": "에너지・정서 안정감",
-                "status": "양호",
-                "basis": "나무 그림 기반",
-                "description": "나무의 형태에서 성장감과 에너지가 관찰됩니다.",
-                "tags": ["성장감", "에너지", "정서 안정"],
-                "bbox": [140, 30, 220, 180],
-                "image_path": result_image_path,
+                "bbox": {"x1": 140, "y1": 30, "x2": 220, "y2": 180},
             },
-            "person": {
+            {
+                "type": "person",
                 "label": "사람",
-                "category": "자아상・자기표현",
-                "status": "점검",
-                "basis": "사람 그림 기반",
-                "description": "사람 그림에서 자기표현 방식과 대인관계에 대한 단서를 살펴볼 수 있습니다.",
-                "tags": ["자기표현", "자아상 점검", "대인관계"],
-                "bbox": [240, 50, 320, 220],
-                "image_path": result_image_path,
+                "bbox": {"x1": 240, "y1": 50, "x2": 320, "y2": 220},
             },
+        ],
+    }
+
+    # TODO: 실제 OpenCV feature 추출 결과로 교체
+    mock_visual_features = {
+        "global": {
+            "image_width": 1280,
+            "image_height": 1280,
+            "drawing_area_ratio": 0.42,
+            "overall_position": {"x": "center", "y": "middle"},
+            "overall_line_density": "medium",
+        },
+        "house": {
+            "detected": True,
+            "relative_size": "medium",
+            "position": {"x": "left", "y": "middle"},
+            "parts": {
+                "door": {"detected": False},
+                "window": {"count": 1},
+                "roof": {"detected": True},
+            },
+            "tags": ["house_detected", "door_not_detected", "window_present"],
+        },
+        "tree": {
+            "detected": True,
+            "relative_size": "medium",
+            "position": {"x": "center", "y": "middle"},
+            "parts": {
+                "trunk": {"detected": True},
+                "crown": {"detected": True},
+                "roots": {"detected": False},
+            },
+            "tags": ["tree_detected", "roots_not_detected"],
+        },
+        "person": {
+            "detected": True,
+            "relative_size": "small",
+            "position": {"x": "right", "y": "middle"},
+            "parts": {
+                "head": {"detected": True},
+                "face": {"detected": True},
+                "hands": {"count": 0},
+                "feet": {"count": 0},
+            },
+            "tags": ["person_detected", "small_person", "hands_not_detected"],
+        },
+        "relationships": {
+            "house_tree": {"overlap": False, "touching": False, "distance_level": "near"},
+            "house_person": {"overlap": False, "touching": False, "distance_level": "far"},
+            "tree_person": {"overlap": False, "touching": False, "distance_level": "near"},
+            "enclosure_type": "none",
         },
     }
 
-    mock_recommendations = [
+    htp_test.test_status = "pdi_choice_pending"
+    htp_test.pdi_status = "not_started"
+    htp_test.result_image_path = result_image_path
+    htp_test.yolo_result_json = mock_yolo_result
+    htp_test.visual_features_json = mock_visual_features
+
+    # 이전 mock 리포트가 남아있을 수 있으므로 초기화
+    htp_test.summary_text = None
+    htp_test.main_emotion = None
+    htp_test.report_text = None
+    htp_test.report_json = None
+    htp_test.recommendations_json = None
+    htp_test.pdi_summary_json = None
+
+    db.commit()
+    db.refresh(htp_test)
+
+    return {
+        "test_id": htp_test.id,
+        "test_status": htp_test.test_status,
+        "pdi_status": htp_test.pdi_status,
+        "result_image_path": htp_test.result_image_path,
+        "display_detections": mock_yolo_result["display_detections"],
+        "pdi_choice": {
+            "title": "아이에게 몇 가지 질문을 해볼까요?",
+            "description": (
+                "아이의 답변을 함께 반영하면 그림의 의미를 더 조심스럽고 풍부하게 "
+                "해석할 수 있어요. 지금 아이에게 질문하기 어려운 상황이라면 건너뛰어도 됩니다."
+            ),
+            "options": [
+                {
+                    "value": "start_pdi",
+                    "label": "질문하고 답변 입력하기",
+                },
+                {
+                    "value": "skip_pdi",
+                    "label": "건너뛰고 리포트 보기",
+                },
+            ],
+        },
+        "message": "이미지 분석이 완료되었습니다. PDI 진행 여부를 선택해주세요.",
+    }
+
+
+@router.post("/{test_id}/pdi/start", summary="PDI 질문 생성")
+def start_pdi(test_id: int, db: Session = Depends(get_db)):
+    htp_test = get_test_or_404(test_id, db)
+
+    if htp_test.test_status != "pdi_choice_pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PDI를 시작할 수 있는 상태가 아닙니다.",
+        )
+
+    # 기존 질문이 있다면 중복 생성을 막기 위해 삭제 후 재생성
+    db.query(HtpPdiInteraction).filter(
+        HtpPdiInteraction.htp_test_id == htp_test.id
+    ).delete()
+
+    mock_questions = [
         {
-            "title": "집에서 함께 그림 그리기",
-            "description": "아이와 함께 가족 그림을 그리고 이야기를 나눠보세요. 자연스럽게 감정을 표현하는 데 도움이 됩니다.",
-            "type": "home_activity",
+            "round_no": 1,
+            "sort_order": 1,
+            "target_type": "house",
+            "question_type": "default_pdi",
+            "question_text": "이 집에는 누가 살고 있나요?",
+            "reason": "집 그림의 의미를 아이의 설명으로 확인하기 위함",
         },
         {
-            "title": "자연 속 놀이 활동 권장",
-            "description": "흙 놀이, 모래 놀이처럼 안정감을 키우는 신체 활동이 도움이 됩니다.",
-            "type": "outdoor_activity",
+            "round_no": 1,
+            "sort_order": 2,
+            "target_type": "house",
+            "question_type": "image_based",
+            "question_text": "이 집에는 들어가는 문이 있을까요? 있다면 어디에 있을까요?",
+            "reason": "이미지 분석에서 문이 뚜렷하게 탐지되지 않아 확인하기 위함",
         },
         {
-            "title": "전문 상담 고려",
-            "description": "결과가 걱정되시거나 아이에게 지속적인 변화가 보인다면 아동 심리 전문가와 상담해보세요.",
-            "type": "referral",
+            "round_no": 1,
+            "sort_order": 3,
+            "target_type": "tree",
+            "question_type": "default_pdi",
+            "question_text": "이 나무는 살아있는 나무인가요?",
+            "reason": "나무 그림의 생동감과 아이의 설명을 함께 확인하기 위함",
+        },
+        {
+            "round_no": 1,
+            "sort_order": 4,
+            "target_type": "tree",
+            "question_type": "image_based",
+            "question_text": "이 나무는 땅에 잘 서 있는 나무일까요?",
+            "reason": "이미지 분석에서 뿌리가 뚜렷하게 탐지되지 않아 확인하기 위함",
+        },
+        {
+            "round_no": 1,
+            "sort_order": 5,
+            "target_type": "person",
+            "question_type": "default_pdi",
+            "question_text": "이 사람은 어떤 기분인가요?",
+            "reason": "사람 그림의 정서적 의미를 아이의 표현으로 확인하기 위함",
+        },
+        {
+            "round_no": 1,
+            "sort_order": 6,
+            "target_type": "person",
+            "question_type": "image_based",
+            "question_text": "이 사람은 지금 무엇을 하고 싶어 하나요?",
+            "reason": "이미지 분석에서 사람이 작게 표현되어 행동 의도와 감정을 확인하기 위함",
         },
     ]
 
+    interactions = []
+    for item in mock_questions:
+        interaction = HtpPdiInteraction(
+            htp_test_id=htp_test.id,
+            round_no=item["round_no"],
+            sort_order=item["sort_order"],
+            target_type=item["target_type"],
+            question_type=item["question_type"],
+            question_text=item["question_text"],
+            reason=item["reason"],
+        )
+        db.add(interaction)
+        interactions.append(interaction)
+
+    htp_test.pdi_status = "accepted"
+    htp_test.test_status = "waiting_pdi_answers"
+
+    db.commit()
+
+    for interaction in interactions:
+        db.refresh(interaction)
+    db.refresh(htp_test)
+
+    return {
+        "test_id": htp_test.id,
+        "test_status": htp_test.test_status,
+        "pdi_status": htp_test.pdi_status,
+        "guide_message": "아이의 답변을 고치거나 해석하지 말고, 가능한 한 아이가 말한 표현 그대로 입력해주세요.",
+        "questions": [
+            {
+                "question_id": interaction.id,
+                "round_no": interaction.round_no,
+                "sort_order": interaction.sort_order,
+                "target_type": interaction.target_type,
+                "question_type": interaction.question_type,
+                "question_text": interaction.question_text,
+                "reason": interaction.reason,
+            }
+            for interaction in sorted(interactions, key=lambda x: (x.round_no, x.sort_order))
+        ],
+    }
+
+
+@router.post("/{test_id}/pdi/answers", summary="PDI 답변 저장")
+def save_pdi_answers(
+    test_id: int,
+    request: PdiAnswerSaveRequest,
+    db: Session = Depends(get_db),
+):
+    htp_test = get_test_or_404(test_id, db)
+
+    if htp_test.test_status not in ["waiting_pdi_answers", "followup_needed"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PDI 답변을 저장할 수 있는 상태가 아닙니다.",
+        )
+
+    question_ids = [item.question_id for item in request.answers]
+
+    interactions = (
+        db.query(HtpPdiInteraction)
+        .filter(
+            HtpPdiInteraction.htp_test_id == htp_test.id,
+            HtpPdiInteraction.id.in_(question_ids),
+        )
+        .all()
+    )
+
+    interaction_map = {interaction.id: interaction for interaction in interactions}
+
+    missing_ids = [qid for qid in question_ids if qid not in interaction_map]
+    if missing_ids:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"존재하지 않는 질문 ID가 있습니다: {missing_ids}",
+        )
+
+    now = datetime.utcnow()
+
+    for answer in request.answers:
+        interaction = interaction_map[answer.question_id]
+        interaction.answer_text = answer.answer_text
+        interaction.answered_at = now
+
+    answered_interactions = (
+        db.query(HtpPdiInteraction)
+        .filter(HtpPdiInteraction.htp_test_id == htp_test.id)
+        .order_by(HtpPdiInteraction.round_no, HtpPdiInteraction.sort_order)
+        .all()
+    )
+
+    answered_count = sum(1 for item in answered_interactions if item.answer_text)
+
+    # TODO: 추후 GPT로 추가 질문 필요 여부 판단
+    # 현재는 mock 흐름이므로 바로 PDI 완료 처리
+    htp_test.pdi_status = "completed"
+    htp_test.test_status = "ready_to_generate_report"
+    htp_test.pdi_summary_json = {
+        "status": "completed",
+        "answered_count": answered_count,
+        "summary": "PDI 답변이 저장되었습니다. 추후 GPT 요약 결과로 교체 예정입니다.",
+    }
+
+    db.commit()
+    db.refresh(htp_test)
+
+    return {
+        "test_id": htp_test.id,
+        "test_status": htp_test.test_status,
+        "pdi_status": htp_test.pdi_status,
+        "saved_count": len(request.answers),
+        "need_followup": False,
+        "message": "PDI 답변이 저장되었습니다. 리포트를 생성할 수 있습니다.",
+    }
+
+
+@router.post("/{test_id}/pdi/skip", summary="PDI 건너뛰기")
+def skip_pdi(test_id: int, db: Session = Depends(get_db)):
+    htp_test = get_test_or_404(test_id, db)
+
+    if htp_test.test_status != "pdi_choice_pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PDI를 건너뛸 수 있는 상태가 아닙니다.",
+        )
+
+    htp_test.pdi_status = "skipped"
+    htp_test.test_status = "ready_to_generate_report"
+    htp_test.pdi_summary_json = {
+        "status": "skipped",
+        "answered_count": 0,
+        "summary": "이번 리포트는 아이의 추가 답변 없이 이미지 분석 결과를 중심으로 작성됩니다.",
+    }
+
+    db.commit()
+    db.refresh(htp_test)
+
+    return {
+        "test_id": htp_test.id,
+        "test_status": htp_test.test_status,
+        "pdi_status": htp_test.pdi_status,
+        "message": "PDI를 건너뛰었습니다. 리포트를 생성할 수 있습니다.",
+    }
+
+
+@router.post("/{test_id}/generate-report", summary="HTP 최종 리포트 생성")
+def generate_report(test_id: int, db: Session = Depends(get_db)):
+    htp_test = get_test_or_404(test_id, db)
+
+    if htp_test.test_status != "ready_to_generate_report":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="리포트를 생성할 수 있는 상태가 아닙니다.",
+        )
+
+    if not htp_test.yolo_result_json or not htp_test.visual_features_json:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="이미지 분석 결과가 없어 리포트를 생성할 수 없습니다.",
+        )
+
+    pdi_interactions = (
+        db.query(HtpPdiInteraction)
+        .filter(HtpPdiInteraction.htp_test_id == htp_test.id)
+        .order_by(HtpPdiInteraction.round_no, HtpPdiInteraction.sort_order)
+        .all()
+    )
+
+    pdi_used = htp_test.pdi_status == "completed"
+    analysis_mode = "with_pdi" if pdi_used else "without_pdi"
+    confidence_level = "medium" if pdi_used else "low"
+
+    pdi_evidence = [
+        {
+            "question": item.question_text,
+            "answer": item.answer_text,
+            "target_type": item.target_type,
+        }
+        for item in pdi_interactions
+        if item.answer_text
+    ]
+
+    if pdi_used:
+        one_line_summary = "아이의 그림 특징과 추가 답변을 함께 고려하여 조심스럽게 분석했습니다."
+        pdi_notice = "PDI 답변이 리포트에 함께 반영되었습니다."
+    else:
+        one_line_summary = "아이의 추가 답변 없이 그림에서 관찰 가능한 특징을 중심으로 분석했습니다."
+        pdi_notice = "PDI를 진행하지 않아 이미지 분석 결과 중심으로 작성되었습니다."
+
+    mock_report_json = {
+        "summary": {
+            "title": "HTP 그림 분석 결과",
+            "one_line_summary": one_line_summary,
+            "main_emotion": "조심스러움",
+            "risk_level": "관찰 필요",
+            "analysis_mode": analysis_mode,
+            "pdi_used": pdi_used,
+            "confidence_level": confidence_level,
+            "disclaimer": "본 리포트는 전문 진단이 아닌 참고용 안내입니다.",
+        },
+        "pdi": {
+            "status": htp_test.pdi_status,
+            "interactions_count": len(pdi_evidence),
+            "summary": pdi_notice,
+        },
+        "visualization": {
+            "image_path": htp_test.result_image_path,
+            "display_bboxes": htp_test.yolo_result_json.get("display_detections", []),
+        },
+        "tabs": {
+            "house": {
+                "label": "집",
+                "status": "보통",
+                "observations": [
+                    "집이 탐지되었습니다.",
+                    "창문이 일부 표현되어 있으며, 문은 뚜렷하게 탐지되지 않았습니다.",
+                ],
+                "pdi_evidence": [
+                    item for item in pdi_evidence if item["target_type"] == "house"
+                ],
+                "interpretation": (
+                    "집은 가족관계와 생활 환경에 대한 인식을 살펴볼 때 참고할 수 있습니다. "
+                    "문이 뚜렷하지 않은 점은 아이의 설명과 함께 확인하는 것이 좋습니다."
+                ),
+                "positive_note": "집의 전체 구조가 표현되어 있어 생활 환경에 대한 기본적인 표현은 확인됩니다.",
+                "tags": ["집", "창문", "문미탐지", "가족관계"],
+            },
+            "tree": {
+                "label": "나무",
+                "status": "관찰 필요",
+                "observations": [
+                    "나무가 탐지되었습니다.",
+                    "기둥과 수관은 표현되어 있으나 뿌리는 뚜렷하게 탐지되지 않았습니다.",
+                ],
+                "pdi_evidence": [
+                    item for item in pdi_evidence if item["target_type"] == "tree"
+                ],
+                "interpretation": (
+                    "나무는 자기상과 성장감을 참고하는 요소입니다. "
+                    "뿌리 표현 부족은 연령과 발달단계를 함께 고려하여 조심스럽게 해석해야 합니다."
+                ),
+                "positive_note": "기둥과 수관이 표현되어 있어 기본적인 구조화 능력은 확인됩니다.",
+                "tags": ["나무", "뿌리미탐지", "자기상"],
+            },
+            "person": {
+                "label": "사람",
+                "status": "관찰 필요",
+                "observations": [
+                    "사람이 비교적 작게 탐지되었습니다.",
+                    "손과 발의 세부 표현은 약하게 나타납니다.",
+                ],
+                "pdi_evidence": [
+                    item for item in pdi_evidence if item["target_type"] == "person"
+                ],
+                "interpretation": (
+                    "사람 그림은 자기개념과 대인관계 인식을 참고하는 요소입니다. "
+                    "작은 크기와 세부 표현 부족은 단정하지 않고 아이의 답변이나 생활 맥락과 함께 살펴보는 것이 좋습니다."
+                ),
+                "positive_note": "사람의 기본 구조는 표현되어 있어 자기표현의 기본 틀은 확인됩니다.",
+                "tags": ["사람", "작은크기", "손발세부표현부족", "자기표상"],
+            },
+        },
+        "relationship_analysis": {
+            "observations": [
+                "집, 나무, 사람은 한 화면 안에 함께 배치되어 있습니다.",
+                "세 요소가 직접 겹치거나 강하게 밀착된 형태는 뚜렷하지 않습니다.",
+            ],
+            "interpretation": (
+                "요소 간 거리는 가족 환경, 자기상, 대인관계 표상이 어떻게 함께 배치되는지를 "
+                "참고하는 보조 정보입니다."
+            ),
+        },
+        "recommendations": [
+            {
+                "title": "그림 속 이야기를 물어보기",
+                "description": "아이에게 그림 속 집, 나무, 사람에 대해 편안하게 이야기할 기회를 주세요.",
+            },
+            {
+                "title": "1~2주간 일상 관찰하기",
+                "description": "최근 아이가 자기표현을 어려워하거나 혼자 있으려는 시간이 늘었는지 부드럽게 관찰해보세요.",
+            },
+            {
+                "title": "전문 상담 고려",
+                "description": "걱정되는 변화가 지속되면 아동 심리 전문가와 상담해보는 것을 권장합니다.",
+            },
+        ],
+        "safety_notice": (
+            "본 리포트는 HTP 그림 검사와 AI 분석을 바탕으로 한 참고용 안내이며, "
+            "전문적인 심리 진단을 대체하지 않습니다."
+        ),
+    }
+
+    mock_recommendations = mock_report_json["recommendations"]
+
     htp_test.test_status = "completed"
-    htp_test.result_image_path = result_image_path
-    htp_test.yolo_result_json = mock_yolo_result
-    htp_test.summary_text = mock_report_json["summary"]
-    htp_test.main_emotion = "stable"
-    htp_test.report_text = "개발 테스트용 HTP 분석 리포트입니다."
+    htp_test.summary_text = mock_report_json["summary"]["one_line_summary"]
+    htp_test.main_emotion = mock_report_json["summary"]["main_emotion"]
+    htp_test.report_text = "개발 테스트용 HTP 분석 리포트입니다. 추후 GPT/RAG 결과로 교체 예정입니다."
     htp_test.report_json = mock_report_json
     htp_test.recommendations_json = mock_recommendations
 
@@ -311,35 +677,24 @@ def analyze_test(test_id: int, db: Session = Depends(get_db)):
 
     return {
         "test_id": htp_test.id,
-        "status": htp_test.test_status,
+        "test_status": htp_test.test_status,
+        "pdi_status": htp_test.pdi_status,
         "report_id": htp_test.id,
         "summary_text": htp_test.summary_text,
         "main_emotion": htp_test.main_emotion,
-        "message": "AI 분석이 완료되었습니다.",
+        "message": "HTP 리포트가 생성되었습니다.",
     }
 
 
 @router.get("/{test_id}", summary="검사 상태 조회")
 def get_test_status(test_id: int, db: Session = Depends(get_db)):
-    htp_test = (
-        db.query(HtpTest)
-        .filter(
-            HtpTest.id == test_id,
-            HtpTest.user_id == TEST_USER_ID,
-        )
-        .first()
-    )
-
-    if htp_test is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="검사 정보를 찾을 수 없습니다.",
-        )
+    htp_test = get_test_or_404(test_id, db)
 
     return {
         "test_id": htp_test.id,
         "child_id": htp_test.child_id,
         "status": htp_test.test_status,
+        "pdi_status": htp_test.pdi_status,
         "report_id": htp_test.id if htp_test.test_status == "completed" else None,
         "original_image_path": htp_test.original_image_path,
         "result_image_path": htp_test.result_image_path,
