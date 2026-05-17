@@ -9,7 +9,12 @@ from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.models.child import Child
-from app.models.htp_pdi import HtpPdiInteraction
+from app.services.pdi_service import (
+    create_mock_pdi_questions,
+    format_pdi_questions,
+    save_pdi_answers as save_pdi_answers_service,
+    skip_pdi as skip_pdi_service,
+)
 from app.models.htp_test import HtpTest
 from app.services.htp_analysis_service import (
     analyze_htp_image_mock,
@@ -198,78 +203,7 @@ def start_pdi(test_id: int, db: Session = Depends(get_db)):
             detail="PDI를 시작할 수 있는 상태가 아닙니다.",
         )
 
-    # 기존 질문이 있다면 중복 생성을 막기 위해 삭제 후 재생성
-    db.query(HtpPdiInteraction).filter(
-        HtpPdiInteraction.htp_test_id == htp_test.id
-    ).delete()
-
-    mock_questions = [
-        {
-            "round_no": 1,
-            "sort_order": 1,
-            "target_type": "house",
-            "question_type": "default_pdi",
-            "question_text": "이 집에는 누가 살고 있나요?",
-            "reason": "집 그림의 의미를 아이의 설명으로 확인하기 위함",
-        },
-        {
-            "round_no": 1,
-            "sort_order": 2,
-            "target_type": "house",
-            "question_type": "image_based",
-            "question_text": "이 집에는 들어가는 문이 있을까요? 있다면 어디에 있을까요?",
-            "reason": "이미지 분석에서 문이 뚜렷하게 탐지되지 않아 확인하기 위함",
-        },
-        {
-            "round_no": 1,
-            "sort_order": 3,
-            "target_type": "tree",
-            "question_type": "default_pdi",
-            "question_text": "이 나무는 살아있는 나무인가요?",
-            "reason": "나무 그림의 생동감과 아이의 설명을 함께 확인하기 위함",
-        },
-        {
-            "round_no": 1,
-            "sort_order": 4,
-            "target_type": "tree",
-            "question_type": "image_based",
-            "question_text": "이 나무는 땅에 잘 서 있는 나무일까요?",
-            "reason": "이미지 분석에서 뿌리가 뚜렷하게 탐지되지 않아 확인하기 위함",
-        },
-        {
-            "round_no": 1,
-            "sort_order": 5,
-            "target_type": "person",
-            "question_type": "default_pdi",
-            "question_text": "이 사람은 어떤 기분인가요?",
-            "reason": "사람 그림의 정서적 의미를 아이의 표현으로 확인하기 위함",
-        },
-        {
-            "round_no": 1,
-            "sort_order": 6,
-            "target_type": "person",
-            "question_type": "image_based",
-            "question_text": "이 사람은 지금 무엇을 하고 싶어 하나요?",
-            "reason": "이미지 분석에서 사람이 작게 표현되어 행동 의도와 감정을 확인하기 위함",
-        },
-    ]
-
-    interactions = []
-    for item in mock_questions:
-        interaction = HtpPdiInteraction(
-            htp_test_id=htp_test.id,
-            round_no=item["round_no"],
-            sort_order=item["sort_order"],
-            target_type=item["target_type"],
-            question_type=item["question_type"],
-            question_text=item["question_text"],
-            reason=item["reason"],
-        )
-        db.add(interaction)
-        interactions.append(interaction)
-
-    htp_test.pdi_status = "accepted"
-    htp_test.test_status = "waiting_pdi_answers"
+    interactions = create_mock_pdi_questions(htp_test=htp_test, db=db)
 
     db.commit()
 
@@ -282,18 +216,7 @@ def start_pdi(test_id: int, db: Session = Depends(get_db)):
         "test_status": htp_test.test_status,
         "pdi_status": htp_test.pdi_status,
         "guide_message": "아이의 답변을 고치거나 해석하지 말고, 가능한 한 아이가 말한 표현 그대로 입력해주세요.",
-        "questions": [
-            {
-                "question_id": interaction.id,
-                "round_no": interaction.round_no,
-                "sort_order": interaction.sort_order,
-                "target_type": interaction.target_type,
-                "question_type": interaction.question_type,
-                "question_text": interaction.question_text,
-                "reason": interaction.reason,
-            }
-            for interaction in sorted(interactions, key=lambda x: (x.round_no, x.sort_order))
-        ],
+        "questions": format_pdi_questions(interactions),
     }
 
 
@@ -311,51 +234,17 @@ def save_pdi_answers(
             detail="PDI 답변을 저장할 수 있는 상태가 아닙니다.",
         )
 
-    question_ids = [item.question_id for item in request.answers]
-
-    interactions = (
-        db.query(HtpPdiInteraction)
-        .filter(
-            HtpPdiInteraction.htp_test_id == htp_test.id,
-            HtpPdiInteraction.id.in_(question_ids),
-        )
-        .all()
+    result = save_pdi_answers_service(
+        htp_test=htp_test,
+        answers=request.answers,
+        db=db,
     )
 
-    interaction_map = {interaction.id: interaction for interaction in interactions}
-
-    missing_ids = [qid for qid in question_ids if qid not in interaction_map]
-    if missing_ids:
+    if not result["ok"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"존재하지 않는 질문 ID가 있습니다: {missing_ids}",
+            detail=f"존재하지 않는 질문 ID가 있습니다: {result['missing_ids']}",
         )
-
-    now = datetime.utcnow()
-
-    for answer in request.answers:
-        interaction = interaction_map[answer.question_id]
-        interaction.answer_text = answer.answer_text
-        interaction.answered_at = now
-
-    answered_interactions = (
-        db.query(HtpPdiInteraction)
-        .filter(HtpPdiInteraction.htp_test_id == htp_test.id)
-        .order_by(HtpPdiInteraction.round_no, HtpPdiInteraction.sort_order)
-        .all()
-    )
-
-    answered_count = sum(1 for item in answered_interactions if item.answer_text)
-
-    # TODO: 추후 GPT로 추가 질문 필요 여부 판단
-    # 현재는 mock 흐름이므로 바로 PDI 완료 처리
-    htp_test.pdi_status = "completed"
-    htp_test.test_status = "ready_to_generate_report"
-    htp_test.pdi_summary_json = {
-        "status": "completed",
-        "answered_count": answered_count,
-        "summary": "PDI 답변이 저장되었습니다. 추후 GPT 요약 결과로 교체 예정입니다.",
-    }
 
     db.commit()
     db.refresh(htp_test)
@@ -364,8 +253,9 @@ def save_pdi_answers(
         "test_id": htp_test.id,
         "test_status": htp_test.test_status,
         "pdi_status": htp_test.pdi_status,
-        "saved_count": len(request.answers),
-        "need_followup": False,
+        "saved_count": result["saved_count"],
+        "need_followup": result["need_followup"],
+        "followup_questions": result["followup_questions"],
         "message": "PDI 답변이 저장되었습니다. 리포트를 생성할 수 있습니다.",
     }
 
@@ -380,13 +270,7 @@ def skip_pdi(test_id: int, db: Session = Depends(get_db)):
             detail="PDI를 건너뛸 수 있는 상태가 아닙니다.",
         )
 
-    htp_test.pdi_status = "skipped"
-    htp_test.test_status = "ready_to_generate_report"
-    htp_test.pdi_summary_json = {
-        "status": "skipped",
-        "answered_count": 0,
-        "summary": "이번 리포트는 아이의 추가 답변 없이 이미지 분석 결과를 중심으로 작성됩니다.",
-    }
+    skip_pdi_service(htp_test)
 
     db.commit()
     db.refresh(htp_test)
