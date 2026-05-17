@@ -2,6 +2,7 @@ from fastapi import APIRouter, Query
 
 from app.services.chroma_service import search_documents
 from app.services.ingest_service import ingest_parenting_guides
+from app.core.config import CHROMA_PARENTING_COLLECTION
 
 router = APIRouter(prefix="/api/admin/rag", tags=["RAG Admin"])
 
@@ -22,4 +23,8 @@ def search_test(
     """
     사용자 질문이 어떤 parenting guide와 매칭되는지 테스트한다.
     """
-    return search_documents(query=q, top_k=top_k)
+    return search_documents(
+        query=q,
+        top_k=top_k,
+        collection_name=CHROMA_PARENTING_COLLECTION,
+    )

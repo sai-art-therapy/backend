@@ -10,7 +10,8 @@ OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-s
 
 # ChromaDB 설정
 CHROMA_PATH = os.getenv("CHROMA_PATH", "./app/db/chroma")
-CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "parenting_guides")
+CHROMA_PARENTING_COLLECTION = os.getenv("CHROMA_PARENTING_COLLECTION", "parenting_guides")
+CHROMA_HTP_COLLECTION = os.getenv("CHROMA_HTP_COLLECTION", "htp_knowledge")
 
 # PostgreSQL 설정
 DATABASE_URL = os.getenv("DATABASE_URL")
