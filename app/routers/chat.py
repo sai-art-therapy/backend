@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -14,6 +15,10 @@ router = APIRouter()
 # TODO: 로그인/JWT 구현 후 실제 로그인 사용자 ID로 교체
 TEST_USER_ID = 1
 
+# GPT에 넘길 이전 대화 개수
+# 전체 대화는 DB에 저장하되, 답변 생성에는 최근 N개만 사용한다.
+CHAT_HISTORY_LIMIT = 8
+
 
 class ChatSessionCreateRequest(BaseModel):
     child_id: Optional[int] = None
@@ -24,6 +29,43 @@ class ChatSessionCreateRequest(BaseModel):
 class ChatMessageRequest(BaseModel):
     message: str
     report_id: Optional[int] = None
+
+
+def build_chat_history(
+    db: Session,
+    session_id: int,
+    before_message_id: int,
+    limit: int = CHAT_HISTORY_LIMIT,
+) -> list[dict]:
+    """
+    같은 채팅방의 이전 대화 중 최근 limit개만 조회해서
+    OpenAI prompt에 넘길 history 형태로 변환한다.
+
+    주의:
+    - 현재 사용자 메시지는 [현재 부모 질문]으로 따로 들어가므로 history에서 제외한다.
+    - DB에는 전체 대화가 저장되지만, GPT에는 최근 일부만 넘겨 비용과 길이를 제한한다.
+    """
+    recent_messages = (
+        db.query(ChatMessage)
+        .filter(
+            ChatMessage.session_id == session_id,
+            ChatMessage.id < before_message_id,
+        )
+        .order_by(ChatMessage.created_at.desc())
+        .limit(limit)
+        .all()
+    )
+
+    # desc로 가져왔기 때문에 다시 오래된 순서 → 최신 순서로 뒤집는다.
+    recent_messages.reverse()
+
+    return [
+        {
+            "role": message.role,
+            "content": message.content,
+        }
+        for message in recent_messages
+    ]
 
 
 @router.post("/sessions", summary="새 채팅 시작", status_code=status.HTTP_201_CREATED)
@@ -188,19 +230,30 @@ def send_chat_message(
     db.commit()
     db.refresh(user_message)
 
-    # 2. 리포트 기반 상담이면 chat_session.htp_test_id를 우선 사용
+    # 2. 현재 메시지 이전의 같은 채팅방 대화만 최근 N개 조회
+    chat_history = build_chat_history(
+        db=db,
+        session_id=session_id,
+        before_message_id=user_message.id,
+        limit=CHAT_HISTORY_LIMIT,
+    )
+
+    # 3. 리포트 기반 상담이면 chat_session.htp_test_id를 우선 사용
     report_id = request.report_id
 
     if report_id is None and chat_session.htp_test_id is not None:
         report_id = chat_session.htp_test_id
 
-    # 3. RAG 답변 생성
+    # 4. RAG 답변 생성
     result = answer_with_rag(
         message=request.message,
-        report_id=str(report_id) if report_id is not None else None,
+        db=db,
+        report_id=report_id,
+        user_id=TEST_USER_ID,
+        chat_history=chat_history,
     )
 
-    # 4. assistant 메시지 저장
+    # 5. assistant 메시지 저장
     assistant_message = ChatMessage(
         session_id=session_id,
         role="assistant",
@@ -209,8 +262,8 @@ def send_chat_message(
     )
     db.add(assistant_message)
 
-    # 5. 상담방 updated_at 갱신 유도
-    chat_session.title = chat_session.title
+    # 6. 상담방 updated_at 갱신
+    chat_session.updated_at = datetime.utcnow()
 
     db.commit()
     db.refresh(assistant_message)
@@ -234,6 +287,11 @@ def send_chat_message(
         "answer": result["answer"],
         "sources": result["sources"],
         "safety_notice": result["safety_notice"],
+        "used_context": {
+            "history_message_count": len(chat_history),
+            "htp_test_id": report_id,
+            "rag_source_count": len(result["sources"]),
+        },
     }
 
 
