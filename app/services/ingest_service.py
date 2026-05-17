@@ -8,6 +8,7 @@ from app.services.source_service import (
     build_licenses,
     build_usage_decisions,
 )
+from app.core.config import CHROMA_PARENTING_COLLECTION
 
 GUIDE_PATH = Path("app/data/rag/parenting_chatbot/parenting_guides.json")
 
@@ -114,12 +115,13 @@ def ingest_parenting_guides(reset: bool = True) -> dict:
         metadatas.append(build_metadata(item))
 
     if reset:
-        reset_collection()
+        reset_collection(CHROMA_PARENTING_COLLECTION)
 
     add_documents(
         ids=ids,
         documents=documents,
-        metadatas=metadatas
+        metadatas=metadatas,
+        collection_name=CHROMA_PARENTING_COLLECTION,
     )
 
     return {
