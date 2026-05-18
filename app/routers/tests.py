@@ -18,7 +18,7 @@ from app.services.htp_analysis_service import (
 from app.services.htp_rag_service import search_htp_knowledge_for_report
 from app.services.htp_report_service import (
     apply_report_to_test,
-    create_mock_htp_report,
+    generate_htp_report,
 )
 from app.services.pdi_service import (
     create_mock_pdi_questions,
