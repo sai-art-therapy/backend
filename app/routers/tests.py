@@ -18,7 +18,7 @@ from app.services.htp_analysis_service import (
 from app.services.htp_rag_service import search_htp_knowledge_for_report
 from app.services.htp_report_service import (
     apply_report_to_test,
-    create_mock_htp_report,
+    generate_htp_report,
 )
 from app.services.pdi_service import (
     create_mock_pdi_questions,
@@ -313,7 +313,7 @@ def generate_report(test_id: int, db: Session = Depends(get_db)):
         pdi_interactions=pdi_interactions,
     )
 
-    report_json = create_mock_htp_report(
+    report_json = generate_htp_report(
         htp_test=htp_test,
         pdi_interactions=pdi_interactions,
         retrieved_knowledge=retrieved_knowledge,

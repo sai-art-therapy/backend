@@ -1,5 +1,7 @@
 from app.models.htp_pdi import HtpPdiInteraction
 from app.models.htp_test import HtpTest
+from app.services.openai_service import generate_json_answer
+from app.services.htp_rag_service import search_htp_knowledge_for_report
 
 
 def build_pdi_evidence(pdi_interactions: list[HtpPdiInteraction]) -> list[dict]:
@@ -169,12 +171,117 @@ def create_mock_htp_report(
 
     return report_json
 
+def generate_htp_report(
+    htp_test: HtpTest,
+    pdi_interactions: list[HtpPdiInteraction],
+    retrieved_knowledge: list[dict],
+) -> dict:
+    """RAG + GPT 기반 실제 HTP 리포트 생성."""
+
+    pdi_evidence = build_pdi_evidence(pdi_interactions)
+    rag_summary = build_rag_summary(retrieved_knowledge)
+
+    rag_context = "\n\n".join(
+        item.get("document", "") for item in retrieved_knowledge
+    )
+
+    pdi_text = "\n".join(
+        f"[{qa['target_type']}] Q: {qa['question']} / A: {qa['answer']}"
+        for qa in pdi_evidence
+    ) or "PDI 응답 없음"
+
+    visual = htp_test.visual_features_json or {}
+
+    prompt = f"""
+당신은 아동 심리 검사 전문가입니다. KHTP 검사 결과를 바탕으로 보호자용 리포트를 작성하세요.
+
+## 그림 분석 결과 (YOLO)
+{visual}
+
+## PDI 응답
+{pdi_text}
+
+## HTP 지식 참고자료
+{rag_context}
+
+## 작성 규칙
+- 단정적 진단 금지, 가능성/경향성 언어 사용
+- 보호자가 이해할 수 있는 언어로 작성
+- 반드시 아래 JSON 형식으로만 응답
+
+## 출력 형식
+{{
+  "summary": {{
+    "title": "HTP 그림 분석 결과",
+    "one_line_summary": "전체 요약 1문장",
+    "main_emotion": "주요 감정 키워드",
+    "risk_level": "낮음/관찰 필요/주의",
+    "analysis_mode": "with_pdi 또는 without_pdi",
+    "pdi_used": true,
+    "confidence_level": "low/medium/high",
+    "disclaimer": "본 리포트는 전문 진단이 아닌 참고용 안내입니다."
+  }},
+  "tabs": {{
+    "house": {{
+      "label": "집",
+      "status": "보통/관찰 필요/주의",
+      "observations": ["관찰 사항1", "관찰 사항2"],
+      "interpretation": "해석",
+      "positive_note": "긍정적 관찰",
+      "tags": ["태그1", "태그2"]
+    }},
+    "tree": {{
+      "label": "나무",
+      "status": "보통/관찰 필요/주의",
+      "observations": ["관찰 사항1"],
+      "interpretation": "해석",
+      "positive_note": "긍정적 관찰",
+      "tags": ["태그1"]
+    }},
+    "person": {{
+      "label": "사람",
+      "status": "보통/관찰 필요/주의",
+      "observations": ["관찰 사항1"],
+      "interpretation": "해석",
+      "positive_note": "긍정적 관찰",
+      "tags": ["태그1"]
+    }}
+  }},
+  "relationship_analysis": {{
+    "observations": ["관찰 사항1"],
+    "interpretation": "해석"
+  }},
+  "recommendations": [
+    {{"title": "제목", "description": "설명"}}
+  ],
+  "safety_notice": "본 리포트는 참고용이며 전문 진단을 대체하지 않습니다."
+}}
+""".strip()
+
+    report_json = generate_json_answer(prompt)
+
+    report_json["pdi"] = {
+        "status": htp_test.pdi_status,
+        "interactions_count": len(pdi_evidence),
+        "summary": "PDI 답변이 반영되었습니다." if pdi_evidence else "PDI 없이 이미지 분석 중심으로 작성되었습니다.",
+    }
+    report_json["rag"] = rag_summary
+    report_json["visualization"] = {
+        "image_path": htp_test.result_image_path,
+        "display_bboxes": (
+            htp_test.yolo_result_json.get("display_detections", [])
+            if htp_test.yolo_result_json
+            else []
+        ),
+    }
+
+    return report_json
 
 def apply_report_to_test(htp_test: HtpTest, report_json: dict) -> None:
     """생성된 report_json을 htp_tests row에 반영."""
     htp_test.test_status = "completed"
     htp_test.summary_text = report_json["summary"]["one_line_summary"]
     htp_test.main_emotion = report_json["summary"]["main_emotion"]
-    htp_test.report_text = "개발 테스트용 HTP 분석 리포트입니다. 추후 GPT/RAG 결과로 교체 예정입니다."
+    htp_test.report_text = report_json["summary"]["one_line_summary"]
     htp_test.report_json = report_json
     htp_test.recommendations_json = report_json["recommendations"]

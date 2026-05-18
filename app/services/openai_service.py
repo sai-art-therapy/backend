@@ -30,3 +30,17 @@ def generate_answer(prompt: str) -> str:
         input=prompt
     )
     return response.output_text
+
+def generate_json_answer(prompt: str) -> dict:
+    """
+    GPT에게 JSON 형식의 응답을 생성하도록 요청한다.
+    HTP 리포트 생성에 사용된다.
+    """
+    import json
+    response = client.chat.completions.create(
+        model=OPENAI_CHAT_MODEL,
+        messages=[{"role": "user", "content": prompt}],
+        temperature=0.3,
+        response_format={"type": "json_object"}
+    )
+    return json.loads(response.choices[0].message.content)
