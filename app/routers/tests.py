@@ -20,7 +20,7 @@ from app.services.htp_report_service import (
     generate_htp_report,
 )
 from app.services.pdi_service import (
-    create_mock_pdi_questions,
+    create_pdi_questions,
     format_pdi_questions,
     save_pdi_answers as save_pdi_answers_service,
     skip_pdi as skip_pdi_service,
@@ -266,7 +266,7 @@ def start_pdi(test_id: int, db: Session = Depends(get_db)):
             detail="PDI를 시작할 수 있는 상태가 아닙니다.",
         )
 
-    interactions = create_mock_pdi_questions(htp_test=htp_test, db=db)
+    interactions = create_pdi_questions(htp_test=htp_test, db=db)
 
     db.commit()
 
