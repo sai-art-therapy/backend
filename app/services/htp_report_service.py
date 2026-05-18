@@ -282,6 +282,6 @@ def apply_report_to_test(htp_test: HtpTest, report_json: dict) -> None:
     htp_test.test_status = "completed"
     htp_test.summary_text = report_json["summary"]["one_line_summary"]
     htp_test.main_emotion = report_json["summary"]["main_emotion"]
-    htp_test.report_text = "개발 테스트용 HTP 분석 리포트입니다. 추후 GPT/RAG 결과로 교체 예정입니다."
+    htp_test.report_text = report_json["summary"]["one_line_summary"]
     htp_test.report_json = report_json
     htp_test.recommendations_json = report_json["recommendations"]
