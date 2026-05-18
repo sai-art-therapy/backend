@@ -7,81 +7,87 @@ from app.models.htp_pdi import HtpPdiInteraction
 from app.models.htp_test import HtpTest
 
 
-def create_mock_pdi_questions(htp_test: HtpTest, db: Session) -> List[HtpPdiInteraction]:
-    """개발 테스트용 PDI 질문 생성.
+def create_pdi_questions(htp_test: HtpTest, db: Session) -> List[HtpPdiInteraction]:
+    """RAG + GPT 기반 PDI 질문 생성."""
+    from app.services.openai_service import generate_json_answer
+    from app.services.chroma_service import search_documents
+    from app.core.config import CHROMA_HTP_COLLECTION
+    import json
 
-    추후 실제 구현에서는:
-    1. visual_features_json 확인
-    2. HTP RAG에서 기본 PDI/관련 지식 검색
-    3. GPT로 기본 질문 + 이미지 기반 맞춤 질문 생성
-    """
-    # 기존 질문이 있다면 중복 생성을 막기 위해 삭제 후 재생성
+    # 기존 질문 삭제
     db.query(HtpPdiInteraction).filter(
         HtpPdiInteraction.htp_test_id == htp_test.id
     ).delete()
 
-    mock_questions = [
-        {
-            "round_no": 1,
-            "sort_order": 1,
-            "target_type": "house",
-            "question_type": "default_pdi",
-            "question_text": "이 집에는 누가 살고 있나요?",
-            "reason": "집 그림의 의미를 아이의 설명으로 확인하기 위함",
-        },
-        {
-            "round_no": 1,
-            "sort_order": 2,
-            "target_type": "house",
-            "question_type": "image_based",
-            "question_text": "이 집에는 들어가는 문이 있을까요? 있다면 어디에 있을까요?",
-            "reason": "이미지 분석에서 문이 뚜렷하게 탐지되지 않아 확인하기 위함",
-        },
-        {
-            "round_no": 1,
-            "sort_order": 3,
-            "target_type": "tree",
-            "question_type": "default_pdi",
-            "question_text": "이 나무는 살아있는 나무인가요?",
-            "reason": "나무 그림의 생동감과 아이의 설명을 함께 확인하기 위함",
-        },
-        {
-            "round_no": 1,
-            "sort_order": 4,
-            "target_type": "tree",
-            "question_type": "image_based",
-            "question_text": "이 나무는 땅에 잘 서 있는 나무일까요?",
-            "reason": "이미지 분석에서 뿌리가 뚜렷하게 탐지되지 않아 확인하기 위함",
-        },
-        {
-            "round_no": 1,
-            "sort_order": 5,
-            "target_type": "person",
-            "question_type": "default_pdi",
-            "question_text": "이 사람은 어떤 기분인가요?",
-            "reason": "사람 그림의 정서적 의미를 아이의 표현으로 확인하기 위함",
-        },
-        {
-            "round_no": 1,
-            "sort_order": 6,
-            "target_type": "person",
-            "question_type": "image_based",
-            "question_text": "이 사람은 지금 무엇을 하고 싶어 하나요?",
-            "reason": "이미지 분석에서 사람이 작게 표현되어 행동 의도와 감정을 확인하기 위함",
-        },
-    ]
+    visual = htp_test.visual_features_json or {}
+
+    # YOLO 태그 기반 RAG 검색
+    yolo_tags = []
+    for key in ["house", "tree", "person"]:
+        tags = visual.get(key, {}).get("tags", [])
+        yolo_tags.extend(tags)
+
+    query = " ".join(yolo_tags) + " PDI 심리신호 해석 질문"
+
+    rag_results = search_documents(
+        query=query,
+        top_k=8,
+        collection_name=CHROMA_HTP_COLLECTION,
+    )
+    rag_context = "\n\n".join(item.get("document", "") for item in rag_results)
+
+    prompt = f"""
+당신은 아동 심리 검사 전문가입니다. KHTP 그림 분석 결과를 바탕으로 PDI 질문을 생성하세요.
+
+## 그림 분석 결과 (YOLO)
+{json.dumps(visual, ensure_ascii=False)}
+
+## HTP 지식 참고자료 (PDI 질문 예시 + 심리신호)
+{rag_context}
+
+## 질문 생성 규칙
+1. 공통 질문 (반드시 포함):
+   - 그림을 그리는 데 얼마나 걸렸는지
+
+2. 개인화 질문 (그림 분석 결과 보고 필요한 것만):
+   - 참고자료의 심리신호와 PDI 질문을 참고해서 이 그림에 맞는 질문만 선택
+   - 집/나무/사람 중 탐지되지 않은 요소가 있으면 왜 안 그렸는지
+   - 사람이 여러 명이면 누구인지, 왜 여러 명인지
+   - 그림의 특이사항이 있을 때만 질문, 없으면 최소화
+   - 특이사항이 많은 요소는 질문을 더 많이, 특이사항 없는 요소는 줄이거나 생략
+   - 질문은 공통 질문 포함 최대 10개까지만 생성
+
+3. 질문 작성 규칙:
+   - 아이에게 직접 물어볼 수 있는 자연스러운 한국어
+   - 유도 질문 금지, 단정적 표현 금지
+
+## 출력 형식 (JSON만 응답)
+{{
+  "questions": [
+    {{
+      "target_type": "global/house/tree/person",
+      "question_type": "drawing_time/missing_element/image_based/default_pdi",
+      "question_text": "질문 내용",
+      "reason": "이 질문을 하는 이유"
+    }}
+  ]
+}}
+""".strip()
+
+    result = generate_json_answer(prompt)
+    questions = result.get("questions", [])
 
     interactions = []
 
-    for item in mock_questions:
+    for idx, q in enumerate(questions):
         interaction = HtpPdiInteraction(
             htp_test_id=htp_test.id,
-            round_no=item["round_no"],
-            sort_order=item["sort_order"],
-            target_type=item["target_type"],
-            question_type=item["question_type"],
-            question_text=item["question_text"],
-            reason=item["reason"],
+            round_no=1,
+            sort_order=idx + 1,
+            target_type=q.get("target_type", "global"),
+            question_type=q.get("question_type", "default_pdi"),
+            question_text=q.get("question_text", ""),
+            reason=q.get("reason", ""),
         )
         db.add(interaction)
         interactions.append(interaction)
@@ -90,7 +96,6 @@ def create_mock_pdi_questions(htp_test: HtpTest, db: Session) -> List[HtpPdiInte
     htp_test.test_status = "waiting_pdi_answers"
 
     return interactions
-
 
 def format_pdi_questions(interactions: List[HtpPdiInteraction]) -> list[dict]:
     return [
