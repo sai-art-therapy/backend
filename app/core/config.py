@@ -16,6 +16,12 @@ CHROMA_HTP_COLLECTION = os.getenv("CHROMA_HTP_COLLECTION", "htp_knowledge")
 # PostgreSQL 설정
 DATABASE_URL = os.getenv("DATABASE_URL")
 
+# YOLO HTP 이미지 분석 설정
+YOLO_HTP_WEIGHTS_PATH = os.getenv("YOLO_HTP_WEIGHTS_PATH", "ml_models/yolo/best.pt")
+YOLO_HTP_MODEL_NAME = os.getenv("YOLO_HTP_MODEL_NAME", "yolov8n_htp_20epoch")
+YOLO_HTP_CONF_THRESHOLD = float(os.getenv("YOLO_HTP_CONF_THRESHOLD", "0.25"))
+YOLO_HTP_FALLBACK_ENABLED = os.getenv("YOLO_HTP_FALLBACK_ENABLED", "true").lower() == "true"
+
 
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.")
