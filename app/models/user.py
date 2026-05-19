@@ -16,6 +16,7 @@ class User(Base):
     name: Mapped[str] = mapped_column(String(100), nullable=False)
 
     # 앱 온보딩 정보
+    hashed_password: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     nickname: Mapped[Optional[str]] = mapped_column(String(30), nullable=True)
     provider: Mapped[Optional[str]] = mapped_column(String(50), nullable=True)
     provider_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)

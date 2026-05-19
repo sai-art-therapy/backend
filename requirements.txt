@@ -9,3 +9,5 @@ psycopg[binary]
 python-multipart
 opencv-python
 ultralytics
+python-jose[cryptography]
+passlib[bcrypt]
