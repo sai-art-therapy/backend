@@ -22,6 +22,10 @@ YOLO_HTP_MODEL_NAME = os.getenv("YOLO_HTP_MODEL_NAME", "yolov8n_htp_20epoch")
 YOLO_HTP_CONF_THRESHOLD = float(os.getenv("YOLO_HTP_CONF_THRESHOLD", "0.25"))
 YOLO_HTP_FALLBACK_ENABLED = os.getenv("YOLO_HTP_FALLBACK_ENABLED", "true").lower() == "true"
 
+# JWT 설정
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-this")
+JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
+JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 
 if not OPENAI_API_KEY:
     raise ValueError("OPENAI_API_KEY가 설정되지 않았습니다. .env 파일을 확인하세요.")

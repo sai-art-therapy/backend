@@ -10,3 +10,5 @@ python-multipart
 opencv-python
 ultralytics
 pillow
+python-jose[cryptography]
+passlib[bcrypt]

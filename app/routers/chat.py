@@ -5,18 +5,15 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.chat import ChatMessage, ChatSession
 from app.models.htp_test import HtpTest
+from app.models.user import User
 from app.services.rag_service import answer_with_rag
 
 router = APIRouter()
 
-# TODO: 로그인/JWT 구현 후 실제 로그인 사용자 ID로 교체
-TEST_USER_ID = 1
-
-# GPT에 넘길 이전 대화 개수
-# 전체 대화는 DB에 저장하되, 답변 생성에는 최근 N개만 사용한다.
 CHAT_HISTORY_LIMIT = 8
 
 
@@ -37,14 +34,6 @@ def build_chat_history(
     before_message_id: int,
     limit: int = CHAT_HISTORY_LIMIT,
 ) -> list[dict]:
-    """
-    같은 채팅방의 이전 대화 중 최근 limit개만 조회해서
-    OpenAI prompt에 넘길 history 형태로 변환한다.
-
-    주의:
-    - 현재 사용자 메시지는 [현재 부모 질문]으로 따로 들어가므로 history에서 제외한다.
-    - DB에는 전체 대화가 저장되지만, GPT에는 최근 일부만 넘겨 비용과 길이를 제한한다.
-    """
     recent_messages = (
         db.query(ChatMessage)
         .filter(
@@ -55,55 +44,35 @@ def build_chat_history(
         .limit(limit)
         .all()
     )
-
-    # desc로 가져왔기 때문에 다시 오래된 순서 → 최신 순서로 뒤집는다.
     recent_messages.reverse()
-
-    return [
-        {
-            "role": message.role,
-            "content": message.content,
-        }
-        for message in recent_messages
-    ]
+    return [{"role": m.role, "content": m.content} for m in recent_messages]
 
 
 @router.post("/sessions", summary="새 채팅 시작", status_code=status.HTTP_201_CREATED)
 def create_chat_session(
     request: ChatSessionCreateRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     if request.htp_test_id is not None:
         htp_test = (
             db.query(HtpTest)
-            .filter(
-                HtpTest.id == request.htp_test_id,
-                HtpTest.user_id == TEST_USER_ID,
-            )
+            .filter(HtpTest.id == request.htp_test_id, HtpTest.user_id == current_user.id)
             .first()
         )
-
         if htp_test is None:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="기반 리포트를 찾을 수 없습니다.",
-            )
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="기반 리포트를 찾을 수 없습니다.")
 
     title = request.title
-
     if title is None:
-        if request.htp_test_id is not None:
-            title = "리포트 기반 상담"
-        else:
-            title = "일반 육아 상담"
+        title = "리포트 기반 상담" if request.htp_test_id is not None else "일반 육아 상담"
 
     chat_session = ChatSession(
-        user_id=TEST_USER_ID,
+        user_id=current_user.id,
         child_id=request.child_id,
         htp_test_id=request.htp_test_id,
         title=title,
     )
-
     db.add(chat_session)
     db.commit()
     db.refresh(chat_session)
@@ -121,16 +90,18 @@ def create_chat_session(
 
 
 @router.get("/sessions", summary="이전 상담 목록 조회")
-def get_chat_sessions(db: Session = Depends(get_db)):
+def get_chat_sessions(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     sessions = (
         db.query(ChatSession)
-        .filter(ChatSession.user_id == TEST_USER_ID)
+        .filter(ChatSession.user_id == current_user.id)
         .order_by(ChatSession.updated_at.desc())
         .all()
     )
 
     result = []
-
     for session in sessions:
         last_message = (
             db.query(ChatMessage)
@@ -138,38 +109,31 @@ def get_chat_sessions(db: Session = Depends(get_db)):
             .order_by(ChatMessage.created_at.desc())
             .first()
         )
-
-        result.append(
-            {
-                "session_id": session.id,
-                "child_id": session.child_id,
-                "htp_test_id": session.htp_test_id,
-                "title": session.title,
-                "last_message": last_message.content if last_message else None,
-                "updated_at": session.updated_at,
-                "created_at": session.created_at,
-            }
-        )
-
+        result.append({
+            "session_id": session.id,
+            "child_id": session.child_id,
+            "htp_test_id": session.htp_test_id,
+            "title": session.title,
+            "last_message": last_message.content if last_message else None,
+            "updated_at": session.updated_at,
+            "created_at": session.created_at,
+        })
     return result
 
 
 @router.get("/sessions/{session_id}", summary="상담 내용 불러오기")
-def get_chat_session(session_id: int, db: Session = Depends(get_db)):
+def get_chat_session(
+    session_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     chat_session = (
         db.query(ChatSession)
-        .filter(
-            ChatSession.id == session_id,
-            ChatSession.user_id == TEST_USER_ID,
-        )
+        .filter(ChatSession.id == session_id, ChatSession.user_id == current_user.id)
         .first()
     )
-
     if chat_session is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="상담방을 찾을 수 없습니다.",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="상담방을 찾을 수 없습니다.")
 
     messages = (
         db.query(ChatMessage)
@@ -187,13 +151,13 @@ def get_chat_session(session_id: int, db: Session = Depends(get_db)):
         "updated_at": chat_session.updated_at,
         "messages": [
             {
-                "message_id": message.id,
-                "role": message.role,
-                "content": message.content,
-                "sources": message.sources_json,
-                "created_at": message.created_at,
+                "message_id": m.id,
+                "role": m.role,
+                "content": m.content,
+                "sources": m.sources_json,
+                "created_at": m.created_at,
             }
-            for message in messages
+            for m in messages
         ],
     }
 
@@ -203,23 +167,16 @@ def send_chat_message(
     session_id: int,
     request: ChatMessageRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     chat_session = (
         db.query(ChatSession)
-        .filter(
-            ChatSession.id == session_id,
-            ChatSession.user_id == TEST_USER_ID,
-        )
+        .filter(ChatSession.id == session_id, ChatSession.user_id == current_user.id)
         .first()
     )
-
     if chat_session is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="상담방을 찾을 수 없습니다.",
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="상담방을 찾을 수 없습니다.")
 
-    # 1. 사용자 메시지 저장
     user_message = ChatMessage(
         session_id=session_id,
         role="user",
@@ -230,7 +187,6 @@ def send_chat_message(
     db.commit()
     db.refresh(user_message)
 
-    # 2. 현재 메시지 이전의 같은 채팅방 대화만 최근 N개 조회
     chat_history = build_chat_history(
         db=db,
         session_id=session_id,
@@ -238,22 +194,18 @@ def send_chat_message(
         limit=CHAT_HISTORY_LIMIT,
     )
 
-    # 3. 리포트 기반 상담이면 chat_session.htp_test_id를 우선 사용
     report_id = request.report_id
-
     if report_id is None and chat_session.htp_test_id is not None:
         report_id = chat_session.htp_test_id
 
-    # 4. RAG 답변 생성
     result = answer_with_rag(
         message=request.message,
         db=db,
         report_id=report_id,
-        user_id=TEST_USER_ID,
+        user_id=current_user.id,
         chat_history=chat_history,
     )
 
-    # 5. assistant 메시지 저장
     assistant_message = ChatMessage(
         session_id=session_id,
         role="assistant",
@@ -261,10 +213,7 @@ def send_chat_message(
         sources_json=result["sources"],
     )
     db.add(assistant_message)
-
-    # 6. 상담방 updated_at 갱신
     chat_session.updated_at = datetime.utcnow()
-
     db.commit()
     db.refresh(assistant_message)
     db.refresh(chat_session)
@@ -306,7 +255,6 @@ def get_suggested_prompts(
             "다음에는 어떤 활동을 함께해볼까요?",
             "아이의 마음을 더 잘 이해하려면 어떻게 대화하면 좋을까요?",
         ]
-
     elif context == "report":
         prompts = [
             "이번 검사 결과를 쉽게 설명해 주세요.",
@@ -314,7 +262,6 @@ def get_suggested_prompts(
             "지난 검사와 비교하면 어떤가요?",
             "아이에게 어떤 말로 도와주면 좋을까요?",
         ]
-
     else:
         prompts = [
             "HTP 검사가 뭔가요?",
