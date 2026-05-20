@@ -4,6 +4,7 @@ python-dotenv
 openai
 chromadb
 pydantic
+email-validator
 sqlalchemy
 psycopg[binary]
 python-multipart
