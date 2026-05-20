@@ -7,18 +7,15 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.child import Child
 from app.models.htp_pdi import HtpPdiInteraction
 from app.models.htp_test import HtpTest
-from app.services.htp_analysis_service import (
-    get_pdi_choice_payload,
-)
+from app.models.user import User
+from app.services.htp_analysis_service import get_pdi_choice_payload
 from app.services.htp_rag_service import search_htp_knowledge_for_report
-from app.services.htp_report_service import (
-    apply_report_to_test,
-    generate_htp_report,
-)
+from app.services.htp_report_service import apply_report_to_test, generate_htp_report
 from app.services.pdi_service import (
     create_pdi_questions,
     format_pdi_questions,
@@ -28,9 +25,6 @@ from app.services.pdi_service import (
 from app.services.yolo_service import analyze_htp_image_with_yolo
 
 router = APIRouter()
-
-# TODO: 로그인/JWT 구현 후 실제 로그인 사용자 ID로 교체
-TEST_USER_ID = 1
 
 UPLOAD_ROOT = Path("uploads")
 HTP_ORIGINAL_DIR = UPLOAD_ROOT / "htp" / "original"
@@ -52,37 +46,26 @@ class PdiAnswerSaveRequest(BaseModel):
     answers: List[PdiAnswerItem]
 
 
-def get_test_or_404(test_id: int, db: Session) -> HtpTest:
+def get_test_or_404(test_id: int, user_id: int, db: Session) -> HtpTest:
     htp_test = (
         db.query(HtpTest)
-        .filter(
-            HtpTest.id == test_id,
-            HtpTest.user_id == TEST_USER_ID,
-        )
+        .filter(HtpTest.id == test_id, HtpTest.user_id == user_id)
         .first()
     )
-
     if htp_test is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="검사 정보를 찾을 수 없습니다.",
         )
-
     return htp_test
 
 
-def apply_image_analysis_result_to_test(
-    htp_test: HtpTest,
-    analysis_result: dict,
-) -> None:
-    """YOLO/OpenCV 분석 결과를 HTP 검사 객체에 반영한다."""
+def apply_image_analysis_result_to_test(htp_test: HtpTest, analysis_result: dict) -> None:
     htp_test.test_status = "pdi_choice_pending"
     htp_test.pdi_status = "not_started"
     htp_test.result_image_path = analysis_result["result_image_path"]
     htp_test.yolo_result_json = analysis_result["yolo_result_json"]
     htp_test.visual_features_json = analysis_result["visual_features_json"]
-
-    # 이전 리포트가 남아있을 수 있으므로 초기화
     htp_test.summary_text = None
     htp_test.main_emotion = None
     htp_test.report_text = None
@@ -91,21 +74,13 @@ def apply_image_analysis_result_to_test(
     htp_test.pdi_summary_json = None
 
 
-def build_image_analysis_response(
-    htp_test: HtpTest,
-    analysis_result: dict,
-) -> dict:
+def build_image_analysis_response(htp_test: HtpTest, analysis_result: dict) -> dict:
     return {
         "test_id": htp_test.id,
         "test_status": htp_test.test_status,
         "pdi_status": htp_test.pdi_status,
         "result_image_path": htp_test.result_image_path,
-        "result_image_paths": analysis_result.get(
-            "result_image_paths",
-            htp_test.yolo_result_json.get("result_image_paths", {})
-            if htp_test.yolo_result_json
-            else {},
-        ),
+        "result_image_paths": analysis_result.get("result_image_paths", {}),
         "yolo_result_json": htp_test.yolo_result_json,
         "visual_features_json": htp_test.visual_features_json,
         "display_detections": analysis_result["display_detections"],
@@ -115,7 +90,11 @@ def build_image_analysis_response(
 
 
 @router.post("", summary="검사 시작", status_code=status.HTTP_201_CREATED)
-def create_test(request: TestCreateRequest, db: Session = Depends(get_db)):
+def create_test(
+    request: TestCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     if not request.consent_agreed:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -124,10 +103,7 @@ def create_test(request: TestCreateRequest, db: Session = Depends(get_db)):
 
     child = (
         db.query(Child)
-        .filter(
-            Child.id == request.child_id,
-            Child.user_id == TEST_USER_ID,
-        )
+        .filter(Child.id == request.child_id, Child.user_id == current_user.id)
         .first()
     )
 
@@ -138,7 +114,7 @@ def create_test(request: TestCreateRequest, db: Session = Depends(get_db)):
         )
 
     htp_test = HtpTest(
-        user_id=TEST_USER_ID,
+        user_id=current_user.id,
         child_id=request.child_id,
         test_status="created",
         test_date=datetime.utcnow(),
@@ -167,8 +143,9 @@ def upload_test_image(
     test_id: int,
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    htp_test = get_test_or_404(test_id, db)
+    htp_test = get_test_or_404(test_id, current_user.id, db)
 
     HTP_ORIGINAL_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -197,8 +174,12 @@ def upload_test_image(
 
 
 @router.post("/{test_id}/analyze", summary="HTP 이미지 분석 및 PDI 선택 대기")
-def analyze_test_image(test_id: int, db: Session = Depends(get_db)):
-    htp_test = get_test_or_404(test_id, db)
+def analyze_test_image(
+    test_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    htp_test = get_test_or_404(test_id, current_user.id, db)
 
     if not htp_test.original_image_path:
         raise HTTPException(
@@ -207,58 +188,22 @@ def analyze_test_image(test_id: int, db: Session = Depends(get_db)):
         )
 
     HTP_RESULT_DIR.mkdir(parents=True, exist_ok=True)
-
     analysis_result = analyze_htp_image_with_yolo(htp_test.original_image_path)
-
-    apply_image_analysis_result_to_test(
-        htp_test=htp_test,
-        analysis_result=analysis_result,
-    )
+    apply_image_analysis_result_to_test(htp_test=htp_test, analysis_result=analysis_result)
 
     db.commit()
     db.refresh(htp_test)
 
-    return build_image_analysis_response(
-        htp_test=htp_test,
-        analysis_result=analysis_result,
-    )
-
-
-@router.post("/{test_id}/analyze-yolo", summary="YOLO 기반 HTP 이미지 분석 테스트")
-def analyze_test_image_yolo(test_id: int, db: Session = Depends(get_db)):
-    """Swagger에서 YOLO 연결 상태를 명확히 테스트하기 위한 endpoint.
-
-    실제 흐름에서는 /tests/{test_id}/analyze를 사용해도 된다.
-    """
-    htp_test = get_test_or_404(test_id, db)
-
-    if not htp_test.original_image_path:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="분석할 이미지가 업로드되지 않았습니다.",
-        )
-
-    HTP_RESULT_DIR.mkdir(parents=True, exist_ok=True)
-
-    analysis_result = analyze_htp_image_with_yolo(htp_test.original_image_path)
-
-    apply_image_analysis_result_to_test(
-        htp_test=htp_test,
-        analysis_result=analysis_result,
-    )
-
-    db.commit()
-    db.refresh(htp_test)
-
-    return build_image_analysis_response(
-        htp_test=htp_test,
-        analysis_result=analysis_result,
-    )
+    return build_image_analysis_response(htp_test=htp_test, analysis_result=analysis_result)
 
 
 @router.post("/{test_id}/pdi/start", summary="PDI 질문 생성")
-def start_pdi(test_id: int, db: Session = Depends(get_db)):
-    htp_test = get_test_or_404(test_id, db)
+def start_pdi(
+    test_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    htp_test = get_test_or_404(test_id, current_user.id, db)
 
     if htp_test.test_status != "pdi_choice_pending":
         raise HTTPException(
@@ -267,7 +212,6 @@ def start_pdi(test_id: int, db: Session = Depends(get_db)):
         )
 
     interactions = create_pdi_questions(htp_test=htp_test, db=db)
-
     db.commit()
 
     for interaction in interactions:
@@ -288,8 +232,9 @@ def save_pdi_answers(
     test_id: int,
     request: PdiAnswerSaveRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
-    htp_test = get_test_or_404(test_id, db)
+    htp_test = get_test_or_404(test_id, current_user.id, db)
 
     if htp_test.test_status not in ["waiting_pdi_answers", "followup_needed"]:
         raise HTTPException(
@@ -297,11 +242,7 @@ def save_pdi_answers(
             detail="PDI 답변을 저장할 수 있는 상태가 아닙니다.",
         )
 
-    result = save_pdi_answers_service(
-        htp_test=htp_test,
-        answers=request.answers,
-        db=db,
-    )
+    result = save_pdi_answers_service(htp_test=htp_test, answers=request.answers, db=db)
 
     if not result["ok"]:
         raise HTTPException(
@@ -319,13 +260,17 @@ def save_pdi_answers(
         "saved_count": result["saved_count"],
         "need_followup": result["need_followup"],
         "followup_questions": result["followup_questions"],
-        "message": "PDI 답변이 저장되었습니다. 리포트를 생성할 수 있습니다.",
+        "message": "PDI 답변이 저장되었습니다.",
     }
 
 
 @router.post("/{test_id}/pdi/skip", summary="PDI 건너뛰기")
-def skip_pdi(test_id: int, db: Session = Depends(get_db)):
-    htp_test = get_test_or_404(test_id, db)
+def skip_pdi(
+    test_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    htp_test = get_test_or_404(test_id, current_user.id, db)
 
     if htp_test.test_status != "pdi_choice_pending":
         raise HTTPException(
@@ -334,7 +279,6 @@ def skip_pdi(test_id: int, db: Session = Depends(get_db)):
         )
 
     skip_pdi_service(htp_test)
-
     db.commit()
     db.refresh(htp_test)
 
@@ -342,13 +286,17 @@ def skip_pdi(test_id: int, db: Session = Depends(get_db)):
         "test_id": htp_test.id,
         "test_status": htp_test.test_status,
         "pdi_status": htp_test.pdi_status,
-        "message": "PDI를 건너뛰었습니다. 리포트를 생성할 수 있습니다.",
+        "message": "PDI를 건너뛰었습니다.",
     }
 
 
 @router.post("/{test_id}/generate-report", summary="HTP 최종 리포트 생성")
-def generate_report(test_id: int, db: Session = Depends(get_db)):
-    htp_test = get_test_or_404(test_id, db)
+def generate_report(
+    test_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    htp_test = get_test_or_404(test_id, current_user.id, db)
 
     if htp_test.test_status != "ready_to_generate_report":
         raise HTTPException(
@@ -380,10 +328,7 @@ def generate_report(test_id: int, db: Session = Depends(get_db)):
         retrieved_knowledge=retrieved_knowledge,
     )
 
-    apply_report_to_test(
-        htp_test=htp_test,
-        report_json=report_json,
-    )
+    apply_report_to_test(htp_test=htp_test, report_json=report_json)
 
     db.commit()
     db.refresh(htp_test)
@@ -401,8 +346,12 @@ def generate_report(test_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/{test_id}", summary="검사 상태 조회")
-def get_test_status(test_id: int, db: Session = Depends(get_db)):
-    htp_test = get_test_or_404(test_id, db)
+def get_test_status(
+    test_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    htp_test = get_test_or_404(test_id, current_user.id, db)
 
     result_image_paths = {}
     if htp_test.yolo_result_json:
@@ -417,8 +366,6 @@ def get_test_status(test_id: int, db: Session = Depends(get_db)):
         "original_image_path": htp_test.original_image_path,
         "result_image_path": htp_test.result_image_path,
         "result_image_paths": result_image_paths,
-        "yolo_result_json": htp_test.yolo_result_json,
-        "visual_features_json": htp_test.visual_features_json,
         "summary_text": htp_test.summary_text,
         "main_emotion": htp_test.main_emotion,
         "created_at": htp_test.created_at,

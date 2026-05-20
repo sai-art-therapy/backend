@@ -2,13 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
+from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.child import Child
+from app.models.user import User
 
 router = APIRouter()
-
-# TODO: 로그인/JWT 구현 후 실제 로그인 사용자 ID로 교체
-TEST_USER_ID = 1
 
 
 class ChildCreateRequest(BaseModel):
@@ -24,10 +23,13 @@ class ChildUpdateRequest(BaseModel):
 
 
 @router.get("", summary="자녀 목록 조회")
-def get_children(db: Session = Depends(get_db)):
+def get_children(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     children = (
         db.query(Child)
-        .filter(Child.user_id == TEST_USER_ID)
+        .filter(Child.user_id == current_user.id)
         .order_by(Child.created_at.desc())
         .all()
     )
@@ -46,9 +48,13 @@ def get_children(db: Session = Depends(get_db)):
 
 
 @router.post("", summary="자녀 추가", status_code=status.HTTP_201_CREATED)
-def create_child(request: ChildCreateRequest, db: Session = Depends(get_db)):
+def create_child(
+    request: ChildCreateRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     child = Child(
-        user_id=TEST_USER_ID,
+        user_id=current_user.id,
         name=request.name,
         birth_year=request.birth_year,
         gender=request.gender,
@@ -73,10 +79,11 @@ def update_child(
     child_id: int,
     request: ChildUpdateRequest,
     db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
 ):
     child = (
         db.query(Child)
-        .filter(Child.id == child_id, Child.user_id == TEST_USER_ID)
+        .filter(Child.id == child_id, Child.user_id == current_user.id)
         .first()
     )
 
@@ -88,10 +95,8 @@ def update_child(
 
     if request.name is not None:
         child.name = request.name
-
     if request.birth_year is not None:
         child.birth_year = request.birth_year
-
     if request.gender is not None:
         child.gender = request.gender
 
@@ -110,10 +115,14 @@ def update_child(
 
 
 @router.delete("/{child_id}", summary="자녀 삭제")
-def delete_child(child_id: int, db: Session = Depends(get_db)):
+def delete_child(
+    child_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     child = (
         db.query(Child)
-        .filter(Child.id == child_id, Child.user_id == TEST_USER_ID)
+        .filter(Child.id == child_id, Child.user_id == current_user.id)
         .first()
     )
 

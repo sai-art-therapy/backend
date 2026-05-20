@@ -3,14 +3,13 @@ from datetime import date
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.child import Child
 from app.models.htp_test import HtpTest
+from app.models.user import User
 
 router = APIRouter()
-
-# TODO: 로그인/JWT 구현 후 실제 로그인 사용자 ID로 교체
-TEST_USER_ID = 1
 
 
 def calculate_korean_age(birth_year: int) -> int:
@@ -18,13 +17,34 @@ def calculate_korean_age(birth_year: int) -> int:
     return current_year - birth_year
 
 
+def safe_get_report_json(report_json, *keys):
+    """report_json이 dict든 str이든 안전하게 값 꺼내기."""
+    import json
+    if report_json is None:
+        return None
+    if isinstance(report_json, str):
+        try:
+            report_json = json.loads(report_json)
+        except Exception:
+            return None
+    result = report_json
+    for key in keys:
+        if not isinstance(result, dict):
+            return None
+        result = result.get(key)
+    return result
+
+
 @router.get("", summary="검사 리포트 목록 조회")
-def get_reports(db: Session = Depends(get_db)):
+def get_reports(
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     reports = (
         db.query(HtpTest, Child)
         .join(Child, HtpTest.child_id == Child.id)
         .filter(
-            HtpTest.user_id == TEST_USER_ID,
+            HtpTest.user_id == current_user.id,
             HtpTest.test_status == "completed",
         )
         .order_by(HtpTest.test_date.desc())
@@ -46,21 +66,9 @@ def get_reports(db: Session = Depends(get_db)):
             "summary_text": report.summary_text,
             "main_emotion": report.main_emotion,
             "result_image_path": report.result_image_path,
-            "analysis_mode": (
-                report.report_json.get("summary", {}).get("analysis_mode")
-                if report.report_json
-                else None
-            ),
-            "pdi_used": (
-                report.report_json.get("summary", {}).get("pdi_used")
-                if report.report_json
-                else None
-            ),
-            "confidence_level": (
-                report.report_json.get("summary", {}).get("confidence_level")
-                if report.report_json
-                else None
-            ),
+            "analysis_mode": safe_get_report_json(report.report_json, "summary", "analysis_mode"),
+            "pdi_used": safe_get_report_json(report.report_json, "summary", "pdi_used"),
+            "confidence_level": safe_get_report_json(report.report_json, "summary", "confidence_level"),
             "created_at": report.created_at,
             "updated_at": report.updated_at,
         }
@@ -69,13 +77,17 @@ def get_reports(db: Session = Depends(get_db)):
 
 
 @router.get("/{report_id}", summary="검사 리포트 상세 조회")
-def get_report_detail(report_id: int, db: Session = Depends(get_db)):
+def get_report_detail(
+    report_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
     result = (
         db.query(HtpTest, Child)
         .join(Child, HtpTest.child_id == Child.id)
         .filter(
             HtpTest.id == report_id,
-            HtpTest.user_id == TEST_USER_ID,
+            HtpTest.user_id == current_user.id,
         )
         .first()
     )
