@@ -2,6 +2,8 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 import cv2
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
 
 from app.core.config import (
     YOLO_HTP_CONF_THRESHOLD,
@@ -67,6 +69,15 @@ DISPLAY_LABEL_MAP = {
     "손": "손",
     "다리": "다리",
     "발": "발",
+
+    # 기타 객체
+    "태양": "태양",
+    "구름": "구름",
+    "꽃": "꽃",
+    "잔디": "잔디",
+    "길": "길",
+    "연기": "연기",
+    "연못": "연못",
 }
 
 
@@ -117,8 +128,7 @@ NORMALIZED_TYPE_MAP = {
 }
 
 
-# 실제 결과 이미지에 bbox로 표시할 큰 객체만 지정
-# 문/창문/지붕/수관/열매 같은 세부 요소는 분석에는 쓰되, 탭 이미지에는 표시하지 않음
+# 프론트 탭용 주요 객체만 표시
 DISPLAY_TARGET_LABELS = {
     "house",
     "house_total",
@@ -294,7 +304,6 @@ def _should_display(raw_label: str) -> bool:
 
 def _extract_detections_from_result(result: Any) -> List[Dict[str, Any]]:
     detections = []
-
     names = result.names
 
     if result.boxes is None:
@@ -569,7 +578,7 @@ def _draw_bboxes_only(
     image,
     detections: List[Dict[str, Any]],
 ) -> None:
-    """텍스트 없이 bbox만 그린다. 한글 label이 ???로 깨지는 문제 방지."""
+    """텍스트 없이 bbox만 그린다."""
     for detection in detections:
         bbox = detection["bbox"]
 
@@ -585,6 +594,74 @@ def _draw_bboxes_only(
             (0, 0, 0),
             2,
         )
+
+
+def _get_korean_font(size: int = 16):
+    """한글 label 표시를 위한 폰트 로드."""
+    font_candidates = [
+        "/System/Library/Fonts/AppleSDGothicNeo.ttc",
+        "/System/Library/Fonts/Supplemental/AppleGothic.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+    ]
+
+    for font_path in font_candidates:
+        if Path(font_path).exists():
+            return ImageFont.truetype(font_path, size=size)
+
+    return ImageFont.load_default()
+
+
+def _get_label_color(label: str) -> tuple:
+    """객체 label에 따라 색상을 배정한다.
+
+    - 집/나무/사람 같은 핵심 객체는 고정색 사용
+    - 그 외 처음 보는 label은 hash 기반 자동 색상 사용
+    - PIL RGB 기준
+    """
+    label = _clean_label(label)
+
+    fixed_color_map = {
+        "house": (220, 20, 60),
+        "house_total": (220, 20, 60),
+        "집": (220, 20, 60),
+        "집전체": (220, 20, 60),
+
+        "tree": (34, 139, 34),
+        "tree_total": (34, 139, 34),
+        "나무": (34, 139, 34),
+        "나무전체": (34, 139, 34),
+
+        "person": (30, 144, 255),
+        "person_total": (30, 144, 255),
+        "사람": (30, 144, 255),
+        "사람전체": (30, 144, 255),
+    }
+
+    if label in fixed_color_map:
+        return fixed_color_map[label]
+
+    color_palette = [
+        (255, 140, 0),
+        (148, 0, 211),
+        (255, 105, 180),
+        (0, 191, 255),
+        (255, 215, 0),
+        (139, 69, 19),
+        (0, 128, 128),
+        (128, 0, 0),
+        (72, 61, 139),
+        (46, 139, 87),
+        (255, 99, 71),
+        (105, 105, 105),
+        (65, 105, 225),
+        (154, 205, 50),
+        (199, 21, 133),
+    ]
+
+    label_hash = sum(ord(char) for char in label)
+    return color_palette[label_hash % len(color_palette)]
 
 
 def _save_single_result_image(
@@ -611,9 +688,82 @@ def _save_single_result_image(
     return str(result_path)
 
 
+def _save_debug_all_result_image(
+    original_image_path: str,
+    detections: List[Dict[str, Any]],
+) -> str:
+    """모든 YOLO bbox + 객체명 + confidence를 표시한 디버그 이미지 생성."""
+    original_path = Path(original_image_path)
+
+    image_bgr = cv2.imread(str(original_path))
+    if image_bgr is None:
+        raise ValueError(
+            f"디버그 결과 이미지를 생성할 수 없습니다. 이미지를 읽을 수 없습니다: {original_path}"
+        )
+
+    image_rgb = cv2.cvtColor(image_bgr, cv2.COLOR_BGR2RGB)
+    pil_image = Image.fromarray(image_rgb)
+    draw = ImageDraw.Draw(pil_image)
+    font = _get_korean_font(size=15)
+
+    for detection in detections:
+        bbox = detection["bbox"]
+        raw_label = detection["label"]
+        label = detection["display_label"]
+        confidence = detection["confidence"]
+
+        color = _get_label_color(raw_label)
+
+        x1 = bbox["x1"]
+        y1 = bbox["y1"]
+        x2 = bbox["x2"]
+        y2 = bbox["y2"]
+
+        text = f"{label} {confidence:.2f}"
+
+        # bbox: 객체별 색상
+        draw.rectangle(
+            [(x1, y1), (x2, y2)],
+            outline=color,
+            width=2,
+        )
+
+        # label background
+        text_bbox = draw.textbbox((x1, y1), text, font=font)
+        text_width = text_bbox[2] - text_bbox[0]
+        text_height = text_bbox[3] - text_bbox[1]
+
+        text_y = max(y1 - text_height - 6, 0)
+
+        draw.rectangle(
+            [(x1, text_y), (x1 + text_width + 8, text_y + text_height + 6)],
+            fill=color,
+            outline=color,
+        )
+
+        # label text
+        draw.text(
+            (x1 + 4, text_y + 3),
+            text,
+            fill=(255, 255, 255),
+            font=font,
+        )
+
+    result_dir = Path("uploads") / "htp" / "result"
+    result_dir.mkdir(parents=True, exist_ok=True)
+
+    result_path = result_dir / f"{original_path.stem}_yolo_debug_all{original_path.suffix}"
+
+    result_bgr = cv2.cvtColor(np.array(pil_image), cv2.COLOR_RGB2BGR)
+    cv2.imwrite(str(result_path), result_bgr)
+
+    return str(result_path)
+
+
 def _build_result_image_paths(
     original_image_path: str,
     display_detections: List[Dict[str, Any]],
+    all_detections: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Optional[str]]:
     grouped = {
         "house": [d for d in display_detections if d["type"] == "house"],
@@ -630,6 +780,7 @@ def _build_result_image_paths(
         "house": None,
         "tree": None,
         "person": None,
+        "debug_all": None,
     }
 
     for key in ["house", "tree", "person"]:
@@ -639,6 +790,12 @@ def _build_result_image_paths(
                 detections=grouped[key],
                 suffix=f"yolo_result_{key}",
             )
+
+    if all_detections:
+        result_image_paths["debug_all"] = _save_debug_all_result_image(
+            original_image_path=original_image_path,
+            detections=all_detections,
+        )
 
     return result_image_paths
 
@@ -655,6 +812,7 @@ def _create_fallback_result(
         "house": None,
         "tree": None,
         "person": None,
+        "debug_all": None,
     }
 
     yolo_result_json["model"] = "fallback_mock_yolo"
@@ -673,15 +831,7 @@ def _create_fallback_result(
 
 
 def analyze_htp_image_with_yolo(original_image_path: str) -> Dict[str, Any]:
-    """HTP 이미지에 대해 YOLO 추론을 수행한다.
-
-    반환 구조:
-    - result_image_path: 전체 bbox 이미지
-    - result_image_paths: all / house / tree / person 탭별 이미지 경로
-    - yolo_result_json: DB 저장용 YOLO 결과
-    - visual_features_json: 리포트 생성용 정량 feature
-    - display_detections: 프론트 표시용 bbox 정보
-    """
+    """HTP 이미지에 대해 YOLO 추론을 수행한다."""
     try:
         image_path = Path(original_image_path)
 
@@ -706,6 +856,7 @@ def analyze_htp_image_with_yolo(original_image_path: str) -> Dict[str, Any]:
         result_image_paths = _build_result_image_paths(
             original_image_path=str(image_path),
             display_detections=display_detections,
+            all_detections=all_detections,
         )
 
         yolo_result_json = {
@@ -716,6 +867,8 @@ def analyze_htp_image_with_yolo(original_image_path: str) -> Dict[str, Any]:
             "all_detections": all_detections,
             "display_detections": display_detections,
             "result_image_paths": result_image_paths,
+            "all_detection_count": len(all_detections),
+            "display_detection_count": len(display_detections),
         }
 
         visual_features_json = _create_visual_features_from_yolo(
