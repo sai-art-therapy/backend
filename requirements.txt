@@ -13,3 +13,6 @@ ultralytics
 pillow
 python-jose[cryptography]
 passlib[bcrypt]
+google-auth
+google-auth-oauthlib
+httpx
