@@ -46,10 +46,7 @@ def create_pdi_questions(htp_test: HtpTest, db: Session) -> List[HtpPdiInteracti
 {rag_context}
 
 ## 질문 생성 규칙
-1. 공통 질문 (반드시 포함):
-   - 그림을 그리는 데 얼마나 걸렸는지
-
-2. 개인화 질문 (그림 분석 결과 보고 필요한 것만):
+1. 개인화 질문 (그림 분석 결과 보고 필요한 것만):
    - 참고자료의 심리신호와 PDI 질문을 참고해서 이 그림에 맞는 질문만 선택
    - 집/나무/사람 중 탐지되지 않은 요소가 있으면 왜 안 그렸는지
    - 사람이 여러 명이면 누구인지, 왜 여러 명인지
@@ -57,7 +54,7 @@ def create_pdi_questions(htp_test: HtpTest, db: Session) -> List[HtpPdiInteracti
    - 특이사항이 많은 요소는 질문을 더 많이, 특이사항 없는 요소는 줄이거나 생략
    - 질문은 공통 질문 포함 최대 10개까지만 생성
 
-3. 질문 작성 규칙:
+2. 질문 작성 규칙:
    - 아이에게 직접 물어볼 수 있는 자연스러운 한국어
    - 유도 질문 금지, 단정적 표현 금지
 
@@ -76,6 +73,9 @@ def create_pdi_questions(htp_test: HtpTest, db: Session) -> List[HtpPdiInteracti
 
     result = generate_json_answer(prompt)
     questions = result.get("questions", [])
+    
+    # drawing_time 타입 질문 제외 (별도 엔드포인트로 분리)
+    questions = [q for q in questions if q.get("question_type") != "drawing_time"]
 
     interactions = []
 
