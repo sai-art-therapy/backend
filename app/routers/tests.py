@@ -38,6 +38,9 @@ class PdiSingleAnswerRequest(BaseModel):
     question_id: int
     answer_text: str | None = None
     skip: bool = False
+    
+class PdiTimeRequest(BaseModel):
+    drawing_time_minutes: int | None = None  # None이면 건너뛰기
 
 
 def get_test_or_404(test_id: int, user_id: int, db: Session) -> HtpTest:
@@ -189,6 +192,36 @@ def analyze_test_image(
     db.refresh(htp_test)
 
     return build_image_analysis_response(htp_test=htp_test, analysis_result=analysis_result)
+
+
+@router.post("/{test_id}/pdi/time", summary="그리기 소요 시간 저장")
+def save_drawing_time(
+    test_id: int,
+    request: PdiTimeRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    htp_test = get_test_or_404(test_id, current_user.id, db)
+
+    if htp_test.test_status != "pdi_choice_pending":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="소요 시간을 저장할 수 있는 상태가 아닙니다.",
+        )
+
+    htp_test.drawing_time_minutes = request.drawing_time_minutes
+    db.commit()
+    db.refresh(htp_test)
+
+    return {
+        "test_id": htp_test.id,
+        "drawing_time_minutes": htp_test.drawing_time_minutes,
+        "message": (
+            f"{request.drawing_time_minutes}분으로 저장되었습니다."
+            if request.drawing_time_minutes
+            else "소요 시간을 건너뛰었습니다."
+        ),
+    }
 
 
 @router.post("/{test_id}/pdi/start", summary="PDI 질문 생성")
@@ -376,7 +409,7 @@ def skip_pdi(
 ):
     htp_test = get_test_or_404(test_id, current_user.id, db)
 
-    if htp_test.test_status != "pdi_choice_pending":
+    if htp_test.test_status not in ["pdi_choice_pending", "waiting_pdi_answers"]:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="PDI를 건너뛸 수 있는 상태가 아닙니다.",
