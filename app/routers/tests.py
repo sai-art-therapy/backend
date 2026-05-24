@@ -221,6 +221,13 @@ def start_pdi(
             "가능한 한 아이가 말한 표현 그대로 입력해주세요."
         ),
         "question_count": len(interactions),
+        "questions": [                                    # 추가
+        {
+            "sort_order": i.sort_order,
+            "question_text": i.question_text,
+        }
+        for i in interactions
+        ],
         "message": "PDI 질문이 생성되었습니다. 첫 질문을 조회해주세요.",
     }
 
