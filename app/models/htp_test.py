@@ -38,6 +38,9 @@ class HtpTest(Base):
     # not_started / accepted / completed / skipped
     pdi_status: Mapped[str] = mapped_column(String(30), default="not_started", nullable=False)
     pdi_summary_json: Mapped[Optional[dict]] = mapped_column(JSONB, nullable=True)
+    
+    # 그리기 소요 시간 (분)
+    drawing_time_minutes: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     # 리포트 화면용 데이터
     summary_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
