@@ -1,6 +1,5 @@
 from datetime import datetime
 from pathlib import Path
-from typing import List
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
@@ -18,8 +17,6 @@ from app.services.htp_rag_service import search_htp_knowledge_for_report
 from app.services.htp_report_service import apply_report_to_test, generate_htp_report
 from app.services.pdi_service import (
     create_pdi_questions,
-    format_pdi_questions,
-    save_pdi_answers as save_pdi_answers_service,
     skip_pdi as skip_pdi_service,
 )
 from app.services.yolo_service import analyze_htp_image_with_yolo
@@ -35,15 +32,6 @@ class TestCreateRequest(BaseModel):
     child_id: int
     consent_agreed: bool
     test_type: str = "HTP"
-
-
-class PdiAnswerItem(BaseModel):
-    question_id: int
-    answer_text: str
-
-
-class PdiAnswerSaveRequest(BaseModel):
-    answers: List[PdiAnswerItem]
 
 
 class PdiSingleAnswerRequest(BaseModel):
@@ -282,43 +270,6 @@ def get_current_pdi_question(
             "question_type": interaction.question_type,
             "target_type": interaction.target_type,
         },
-    }
-
-
-@router.post("/{test_id}/pdi/answers", summary="PDI 답변 일괄 저장 (구버전)")
-def save_pdi_answers(
-    test_id: int,
-    request: PdiAnswerSaveRequest,
-    db: Session = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    htp_test = get_test_or_404(test_id, current_user.id, db)
-
-    if htp_test.test_status not in ["waiting_pdi_answers", "followup_needed"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="PDI 답변을 저장할 수 있는 상태가 아닙니다.",
-        )
-
-    result = save_pdi_answers_service(htp_test=htp_test, answers=request.answers, db=db)
-
-    if not result["ok"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"존재하지 않는 질문 ID가 있습니다: {result['missing_ids']}",
-        )
-
-    db.commit()
-    db.refresh(htp_test)
-
-    return {
-        "test_id": htp_test.id,
-        "test_status": htp_test.test_status,
-        "pdi_status": htp_test.pdi_status,
-        "saved_count": result["saved_count"],
-        "need_followup": result["need_followup"],
-        "followup_questions": result["followup_questions"],
-        "message": "PDI 답변이 저장되었습니다.",
     }
 
 
