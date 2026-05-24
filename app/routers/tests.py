@@ -46,6 +46,12 @@ class PdiAnswerSaveRequest(BaseModel):
     answers: List[PdiAnswerItem]
 
 
+class PdiSingleAnswerRequest(BaseModel):
+    question_id: int
+    answer_text: str | None = None
+    skip: bool = False
+
+
 def get_test_or_404(test_id: int, user_id: int, db: Session) -> HtpTest:
     htp_test = (
         db.query(HtpTest)
@@ -222,12 +228,64 @@ def start_pdi(
         "test_id": htp_test.id,
         "test_status": htp_test.test_status,
         "pdi_status": htp_test.pdi_status,
-        "guide_message": "아이의 답변을 고치거나 해석하지 말고, 가능한 한 아이가 말한 표현 그대로 입력해주세요.",
-        "questions": format_pdi_questions(interactions),
+        "guide_message": (
+            "아이의 답변을 고치거나 해석하지 말고, "
+            "가능한 한 아이가 말한 표현 그대로 입력해주세요."
+        ),
+        "question_count": len(interactions),
+        "message": "PDI 질문이 생성되었습니다. 첫 질문을 조회해주세요.",
     }
 
 
-@router.post("/{test_id}/pdi/answers", summary="PDI 답변 저장")
+@router.get("/{test_id}/pdi/current", summary="현재 PDI 질문 조회")
+def get_current_pdi_question(
+    test_id: int,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    htp_test = get_test_or_404(test_id, current_user.id, db)
+
+    if htp_test.test_status not in ["waiting_pdi_answers", "followup_needed"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PDI 질문을 조회할 수 있는 상태가 아닙니다.",
+        )
+
+    interaction = (
+        db.query(HtpPdiInteraction)
+        .filter(
+            HtpPdiInteraction.htp_test_id == htp_test.id,
+            HtpPdiInteraction.answered_at.is_(None),
+        )
+        .order_by(HtpPdiInteraction.round_no, HtpPdiInteraction.sort_order)
+        .first()
+    )
+
+    if interaction is None:
+        return {"completed": True, "message": "모든 질문이 완료되었습니다."}
+
+    total_count = (
+        db.query(HtpPdiInteraction)
+        .filter(HtpPdiInteraction.htp_test_id == htp_test.id)
+        .count()
+    )
+
+    return {
+        "completed": False,
+        "question": {
+            "question_id": interaction.id,
+            "round_no": interaction.round_no,
+            "sort_order": interaction.sort_order,
+            "current_step": interaction.sort_order,
+            "total_count": total_count,
+            "question_text": interaction.question_text,
+            "question_type": interaction.question_type,
+            "target_type": interaction.target_type,
+        },
+    }
+
+
+@router.post("/{test_id}/pdi/answers", summary="PDI 답변 일괄 저장 (구버전)")
 def save_pdi_answers(
     test_id: int,
     request: PdiAnswerSaveRequest,
@@ -264,7 +322,95 @@ def save_pdi_answers(
     }
 
 
-@router.post("/{test_id}/pdi/skip", summary="PDI 건너뛰기")
+@router.post("/{test_id}/pdi/answer", summary="PDI 단일 질문 답변 또는 건너뛰기")
+def save_single_pdi_answer(
+    test_id: int,
+    request: PdiSingleAnswerRequest,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    htp_test = get_test_or_404(test_id, current_user.id, db)
+
+    if htp_test.test_status not in ["waiting_pdi_answers", "followup_needed"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="PDI 답변을 저장할 수 있는 상태가 아닙니다.",
+        )
+
+    interaction = (
+        db.query(HtpPdiInteraction)
+        .filter(
+            HtpPdiInteraction.id == request.question_id,
+            HtpPdiInteraction.htp_test_id == htp_test.id,
+        )
+        .first()
+    )
+
+    if interaction is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="질문을 찾을 수 없습니다.",
+        )
+
+    # 건너뛰기: answer_text=None, 답변: answer_text 저장
+    interaction.answer_text = None if request.skip else request.answer_text
+    interaction.answered_at = datetime.utcnow()
+
+    db.flush()
+
+    next_question = (
+        db.query(HtpPdiInteraction)
+        .filter(
+            HtpPdiInteraction.htp_test_id == htp_test.id,
+            HtpPdiInteraction.answered_at.is_(None),
+        )
+        .order_by(HtpPdiInteraction.round_no, HtpPdiInteraction.sort_order)
+        .first()
+    )
+
+    # 모든 질문 처리 완료
+    if next_question is None:
+        answered_count = (
+            db.query(HtpPdiInteraction)
+            .filter(
+                HtpPdiInteraction.htp_test_id == htp_test.id,
+                HtpPdiInteraction.answer_text.is_not(None),
+            )
+            .count()
+        )
+        htp_test.pdi_status = "completed"
+        htp_test.test_status = "ready_to_generate_report"
+        htp_test.pdi_summary_json = {
+            "status": "completed",
+            "answered_count": answered_count,
+            "summary": "PDI 답변 저장 완료",
+        }
+        db.commit()
+        return {"completed": True, "message": "모든 질문이 완료되었습니다."}
+
+    total_count = (
+        db.query(HtpPdiInteraction)
+        .filter(HtpPdiInteraction.htp_test_id == htp_test.id)
+        .count()
+    )
+    db.commit()
+
+    return {
+        "completed": False,
+        "next_question": {
+            "question_id": next_question.id,
+            "round_no": next_question.round_no,
+            "sort_order": next_question.sort_order,
+            "current_step": next_question.sort_order,
+            "total_count": total_count,
+            "question_text": next_question.question_text,
+            "question_type": next_question.question_type,
+            "target_type": next_question.target_type,
+        },
+    }
+
+
+@router.post("/{test_id}/pdi/skip", summary="PDI 전체 건너뛰기")
 def skip_pdi(
     test_id: int,
     db: Session = Depends(get_db),
