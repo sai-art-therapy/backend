@@ -38,9 +38,10 @@ class PdiSingleAnswerRequest(BaseModel):
     question_id: int
     answer_text: str | None = None
     skip: bool = False
-    
+
+
 class PdiTimeRequest(BaseModel):
-    drawing_time_minutes: int | None = None  # None이면 건너뛰기
+    drawing_time_minutes: int | None = None
 
 
 def get_test_or_404(test_id: int, user_id: int, db: Session) -> HtpTest:
@@ -49,12 +50,76 @@ def get_test_or_404(test_id: int, user_id: int, db: Session) -> HtpTest:
         .filter(HtpTest.id == test_id, HtpTest.user_id == user_id)
         .first()
     )
+
     if htp_test is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="검사 정보를 찾을 수 없습니다.",
         )
+
     return htp_test
+
+
+def get_next_action(htp_test: HtpTest) -> str:
+    if htp_test.test_status == "created":
+        return "upload_image"
+
+    if htp_test.test_status == "image_uploaded":
+        return "analyze_image"
+
+    if htp_test.test_status == "pdi_choice_pending":
+        return "choose_pdi"
+
+    if htp_test.test_status in ["waiting_pdi_answers", "followup_needed"]:
+        return "answer_pdi"
+
+    if htp_test.test_status == "ready_to_generate_report":
+        return "generate_report"
+
+    if htp_test.test_status == "completed":
+        return "view_report"
+
+    return "unknown"
+
+
+def serialize_test_status(htp_test: HtpTest, db: Session) -> dict:
+    child = (
+        db.query(Child)
+        .filter(Child.id == htp_test.child_id, Child.user_id == htp_test.user_id)
+        .first()
+    )
+
+    result_image_paths = {}
+    if htp_test.yolo_result_json:
+        result_image_paths = htp_test.yolo_result_json.get("result_image_paths", {})
+
+    return {
+        "test_id": htp_test.id,
+        "child": {
+            "child_id": child.id,
+            "name": child.name,
+        }
+        if child
+        else None,
+        "test_status": htp_test.test_status,
+        "pdi_status": htp_test.pdi_status,
+        "consent_agreed": htp_test.consent_agreed,
+        "drawing_time_minutes": htp_test.drawing_time_minutes,
+        "has_original_image": bool(htp_test.original_image_path),
+        "has_analysis_result": bool(
+            htp_test.yolo_result_json and htp_test.visual_features_json
+        ),
+        "has_report": htp_test.test_status == "completed",
+        "report_id": htp_test.id if htp_test.test_status == "completed" else None,
+        "original_image_path": htp_test.original_image_path,
+        "result_image_path": htp_test.result_image_path,
+        "result_image_paths": result_image_paths,
+        "summary_text": htp_test.summary_text,
+        "main_emotion": htp_test.main_emotion,
+        "next_action": get_next_action(htp_test),
+        "created_at": htp_test.created_at,
+        "updated_at": htp_test.updated_at,
+    }
 
 
 def apply_image_analysis_result_to_test(htp_test: HtpTest, analysis_result: dict) -> None:
@@ -76,6 +141,7 @@ def build_image_analysis_response(htp_test: HtpTest, analysis_result: dict) -> d
         "test_id": htp_test.id,
         "test_status": htp_test.test_status,
         "pdi_status": htp_test.pdi_status,
+        "next_action": "choose_pdi",
         "result_image_path": htp_test.result_image_path,
         "result_image_paths": analysis_result.get("result_image_paths", {}),
         "yolo_result_json": htp_test.yolo_result_json,
@@ -84,6 +150,23 @@ def build_image_analysis_response(htp_test: HtpTest, analysis_result: dict) -> d
         "pdi_choice": get_pdi_choice_payload(),
         "message": "이미지 분석이 완료되었습니다. PDI 진행 여부를 선택해주세요.",
     }
+
+
+def serialize_pdi_question(interaction: HtpPdiInteraction, total_count: int | None = None) -> dict:
+    question = {
+        "question_id": interaction.id,
+        "round_no": interaction.round_no,
+        "sort_order": interaction.sort_order,
+        "question_text": interaction.question_text,
+        "question_type": interaction.question_type,
+        "target_type": interaction.target_type,
+    }
+
+    if total_count is not None:
+        question["current_step"] = interaction.sort_order
+        question["total_count"] = total_count
+
+    return question
 
 
 @router.post("", summary="검사 시작", status_code=status.HTTP_201_CREATED)
@@ -130,6 +213,7 @@ def create_test(
         "test_status": htp_test.test_status,
         "pdi_status": htp_test.pdi_status,
         "consent_agreed": htp_test.consent_agreed,
+        "next_action": "upload_image",
         "created_at": htp_test.created_at,
         "message": "검사가 시작되었습니다.",
     }
@@ -166,6 +250,7 @@ def upload_test_image(
         "saved_path": htp_test.original_image_path,
         "test_status": htp_test.test_status,
         "pdi_status": htp_test.pdi_status,
+        "next_action": "analyze_image",
         "message": "이미지 업로드 완료",
     }
 
@@ -185,13 +270,20 @@ def analyze_test_image(
         )
 
     HTP_RESULT_DIR.mkdir(parents=True, exist_ok=True)
+
     analysis_result = analyze_htp_image_with_yolo(htp_test.original_image_path)
-    apply_image_analysis_result_to_test(htp_test=htp_test, analysis_result=analysis_result)
+    apply_image_analysis_result_to_test(
+        htp_test=htp_test,
+        analysis_result=analysis_result,
+    )
 
     db.commit()
     db.refresh(htp_test)
 
-    return build_image_analysis_response(htp_test=htp_test, analysis_result=analysis_result)
+    return build_image_analysis_response(
+        htp_test=htp_test,
+        analysis_result=analysis_result,
+    )
 
 
 @router.post("/{test_id}/pdi/time", summary="그리기 소요 시간 저장")
@@ -210,12 +302,14 @@ def save_drawing_time(
         )
 
     htp_test.drawing_time_minutes = request.drawing_time_minutes
+
     db.commit()
     db.refresh(htp_test)
 
     return {
         "test_id": htp_test.id,
         "drawing_time_minutes": htp_test.drawing_time_minutes,
+        "next_action": "choose_pdi",
         "message": (
             f"{request.drawing_time_minutes}분으로 저장되었습니다."
             if request.drawing_time_minutes
@@ -239,29 +333,29 @@ def start_pdi(
         )
 
     interactions = create_pdi_questions(htp_test=htp_test, db=db)
+
     db.commit()
 
     for interaction in interactions:
         db.refresh(interaction)
+
     db.refresh(htp_test)
 
     return {
         "test_id": htp_test.id,
         "test_status": htp_test.test_status,
         "pdi_status": htp_test.pdi_status,
+        "next_action": "answer_pdi",
         "guide_message": (
             "아이의 답변을 고치거나 해석하지 말고, "
             "가능한 한 아이가 말한 표현 그대로 입력해주세요."
         ),
         "question_count": len(interactions),
-        "questions": [                                    # 추가
-        {
-            "sort_order": i.sort_order,
-            "question_text": i.question_text,
-        }
-        for i in interactions
+        "questions": [
+            serialize_pdi_question(interaction)
+            for interaction in interactions
         ],
-        "message": "PDI 질문이 생성되었습니다. 첫 질문을 조회해주세요.",
+        "message": "PDI 질문이 생성되었습니다.",
     }
 
 
@@ -290,7 +384,11 @@ def get_current_pdi_question(
     )
 
     if interaction is None:
-        return {"completed": True, "message": "모든 질문이 완료되었습니다."}
+        return {
+            "completed": True,
+            "next_action": "generate_report",
+            "message": "모든 질문이 완료되었습니다.",
+        }
 
     total_count = (
         db.query(HtpPdiInteraction)
@@ -300,16 +398,7 @@ def get_current_pdi_question(
 
     return {
         "completed": False,
-        "question": {
-            "question_id": interaction.id,
-            "round_no": interaction.round_no,
-            "sort_order": interaction.sort_order,
-            "current_step": interaction.sort_order,
-            "total_count": total_count,
-            "question_text": interaction.question_text,
-            "question_type": interaction.question_type,
-            "target_type": interaction.target_type,
-        },
+        "question": serialize_pdi_question(interaction, total_count=total_count),
     }
 
 
@@ -343,7 +432,12 @@ def save_single_pdi_answer(
             detail="질문을 찾을 수 없습니다.",
         )
 
-    # 건너뛰기: answer_text=None, 답변: answer_text 저장
+    if not request.skip and not request.answer_text:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="답변을 입력하거나 건너뛰기를 선택해주세요.",
+        )
+
     interaction.answer_text = None if request.skip else request.answer_text
     interaction.answered_at = datetime.utcnow()
 
@@ -359,7 +453,6 @@ def save_single_pdi_answer(
         .first()
     )
 
-    # 모든 질문 처리 완료
     if next_question is None:
         answered_count = (
             db.query(HtpPdiInteraction)
@@ -369,6 +462,7 @@ def save_single_pdi_answer(
             )
             .count()
         )
+
         htp_test.pdi_status = "completed"
         htp_test.test_status = "ready_to_generate_report"
         htp_test.pdi_summary_json = {
@@ -376,28 +470,34 @@ def save_single_pdi_answer(
             "answered_count": answered_count,
             "summary": "PDI 답변 저장 완료",
         }
+
         db.commit()
-        return {"completed": True, "message": "모든 질문이 완료되었습니다."}
+        db.refresh(htp_test)
+
+        return {
+            "completed": True,
+            "test_id": htp_test.id,
+            "test_status": htp_test.test_status,
+            "pdi_status": htp_test.pdi_status,
+            "next_action": "generate_report",
+            "message": "모든 질문이 완료되었습니다.",
+        }
 
     total_count = (
         db.query(HtpPdiInteraction)
         .filter(HtpPdiInteraction.htp_test_id == htp_test.id)
         .count()
     )
+
     db.commit()
 
     return {
         "completed": False,
-        "next_question": {
-            "question_id": next_question.id,
-            "round_no": next_question.round_no,
-            "sort_order": next_question.sort_order,
-            "current_step": next_question.sort_order,
-            "total_count": total_count,
-            "question_text": next_question.question_text,
-            "question_type": next_question.question_type,
-            "target_type": next_question.target_type,
-        },
+        "next_action": "answer_pdi",
+        "next_question": serialize_pdi_question(
+            next_question,
+            total_count=total_count,
+        ),
     }
 
 
@@ -416,6 +516,7 @@ def skip_pdi(
         )
 
     skip_pdi_service(htp_test)
+
     db.commit()
     db.refresh(htp_test)
 
@@ -423,6 +524,7 @@ def skip_pdi(
         "test_id": htp_test.id,
         "test_status": htp_test.test_status,
         "pdi_status": htp_test.pdi_status,
+        "next_action": "generate_report",
         "message": "PDI를 건너뛰었습니다.",
     }
 
@@ -474,6 +576,7 @@ def generate_report(
         "test_id": htp_test.id,
         "test_status": htp_test.test_status,
         "pdi_status": htp_test.pdi_status,
+        "next_action": "view_report",
         "report_id": htp_test.id,
         "summary_text": htp_test.summary_text,
         "main_emotion": htp_test.main_emotion,
@@ -489,22 +592,4 @@ def get_test_status(
     current_user: User = Depends(get_current_user),
 ):
     htp_test = get_test_or_404(test_id, current_user.id, db)
-
-    result_image_paths = {}
-    if htp_test.yolo_result_json:
-        result_image_paths = htp_test.yolo_result_json.get("result_image_paths", {})
-
-    return {
-        "test_id": htp_test.id,
-        "child_id": htp_test.child_id,
-        "status": htp_test.test_status,
-        "pdi_status": htp_test.pdi_status,
-        "report_id": htp_test.id if htp_test.test_status == "completed" else None,
-        "original_image_path": htp_test.original_image_path,
-        "result_image_path": htp_test.result_image_path,
-        "result_image_paths": result_image_paths,
-        "summary_text": htp_test.summary_text,
-        "main_emotion": htp_test.main_emotion,
-        "created_at": htp_test.created_at,
-        "updated_at": htp_test.updated_at,
-    }
+    return serialize_test_status(htp_test, db)
