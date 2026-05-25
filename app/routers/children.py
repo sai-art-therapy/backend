@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
@@ -11,15 +11,63 @@ router = APIRouter()
 
 
 class ChildCreateRequest(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1, max_length=20)
     birth_year: int
     gender: str
 
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str) -> str:
+        name = value.strip()
+        if not name:
+            raise ValueError("자녀 이름을 입력해주세요.")
+        return name
+
+    @field_validator("gender")
+    @classmethod
+    def validate_gender(cls, value: str) -> str:
+        if value not in {"male", "female"}:
+            raise ValueError("성별은 male 또는 female만 가능합니다.")
+        return value
+
 
 class ChildUpdateRequest(BaseModel):
-    name: str | None = None
+    name: str | None = Field(default=None, min_length=1, max_length=20)
     birth_year: int | None = None
     gender: str | None = None
+
+    @field_validator("name")
+    @classmethod
+    def validate_name(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+
+        name = value.strip()
+        if not name:
+            raise ValueError("자녀 이름을 입력해주세요.")
+        return name
+
+    @field_validator("gender")
+    @classmethod
+    def validate_gender(cls, value: str | None) -> str | None:
+        if value is None:
+            return value
+
+        if value not in {"male", "female"}:
+            raise ValueError("성별은 male 또는 female만 가능합니다.")
+
+        return value
+
+
+def serialize_child(child: Child) -> dict:
+    return {
+        "child_id": child.id,
+        "name": child.name,
+        "birth_year": child.birth_year,
+        "gender": child.gender,
+        "created_at": child.created_at,
+        "updated_at": child.updated_at,
+    }
 
 
 @router.get("", summary="자녀 목록 조회")
@@ -34,17 +82,7 @@ def get_children(
         .all()
     )
 
-    return [
-        {
-            "child_id": child.id,
-            "name": child.name,
-            "birth_year": child.birth_year,
-            "gender": child.gender,
-            "created_at": child.created_at,
-            "updated_at": child.updated_at,
-        }
-        for child in children
-    ]
+    return [serialize_child(child) for child in children]
 
 
 @router.post("", summary="자녀 추가", status_code=status.HTTP_201_CREATED)
@@ -64,14 +102,7 @@ def create_child(
     db.commit()
     db.refresh(child)
 
-    return {
-        "child_id": child.id,
-        "name": child.name,
-        "birth_year": child.birth_year,
-        "gender": child.gender,
-        "created_at": child.created_at,
-        "updated_at": child.updated_at,
-    }
+    return serialize_child(child)
 
 
 @router.patch("/{child_id}", summary="자녀 정보 수정")
@@ -103,15 +134,10 @@ def update_child(
     db.commit()
     db.refresh(child)
 
-    return {
-        "child_id": child.id,
-        "name": child.name,
-        "birth_year": child.birth_year,
-        "gender": child.gender,
-        "created_at": child.created_at,
-        "updated_at": child.updated_at,
-        "message": "자녀 정보 수정 완료",
-    }
+    response = serialize_child(child)
+    response["message"] = "자녀 정보 수정 완료"
+
+    return response
 
 
 @router.delete("/{child_id}", summary="자녀 삭제")
