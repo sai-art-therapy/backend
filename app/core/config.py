@@ -16,10 +16,17 @@ CHROMA_HTP_COLLECTION = os.getenv("CHROMA_HTP_COLLECTION", "htp_knowledge")
 # PostgreSQL 설정
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-# YOLO HTP 이미지 분석 설정
-YOLO_HTP_WEIGHTS_PATH = os.getenv("YOLO_HTP_WEIGHTS_PATH", "ml_models/yolo/best.pt")
-YOLO_HTP_MODEL_NAME = os.getenv("YOLO_HTP_MODEL_NAME", "yolov8n_htp_20epoch")
-YOLO_HTP_CONF_THRESHOLD = float(os.getenv("YOLO_HTP_CONF_THRESHOLD", "0.25"))
+# YOLO HTP 이미지 분석 설정 (house / tree / person 모델 분리)
+YOLO_HTP_HOUSE_WEIGHTS_PATH  = os.getenv("YOLO_HTP_HOUSE_WEIGHTS_PATH",  "ml_models/yolo/house_best.pt")
+YOLO_HTP_TREE_WEIGHTS_PATH   = os.getenv("YOLO_HTP_TREE_WEIGHTS_PATH",   "ml_models/yolo/tree_best.pt")
+YOLO_HTP_PERSON_WEIGHTS_PATH = os.getenv("YOLO_HTP_PERSON_WEIGHTS_PATH", "ml_models/yolo/person_best.pt")
+
+YOLO_HTP_MODEL_NAME_HOUSE    = os.getenv("YOLO_HTP_MODEL_NAME_HOUSE",  "yolov8m_house")
+YOLO_HTP_MODEL_NAME_TREE     = os.getenv("YOLO_HTP_MODEL_NAME_TREE",   "yolov8m_tree")
+YOLO_HTP_MODEL_NAME_PERSON   = os.getenv("YOLO_HTP_MODEL_NAME_PERSON", "yolov8m_person")
+
+YOLO_HTP_IMAGE_SIZE      = int(os.getenv("YOLO_HTP_IMAGE_SIZE", "640"))
+YOLO_HTP_CONF_THRESHOLD  = float(os.getenv("YOLO_HTP_CONF_THRESHOLD", "0.25"))
 YOLO_HTP_FALLBACK_ENABLED = os.getenv("YOLO_HTP_FALLBACK_ENABLED", "true").lower() == "true"
 
 # JWT 설정
