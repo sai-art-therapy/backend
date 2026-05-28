@@ -254,6 +254,60 @@ MAIN_OBJECT_LABELS: Dict[str, set] = {
 # ─────────────────────────────────────────────────────────────────────────────
 
 
+# ── Part별 공간 검증 정책 ──────────────────────────────────────────────────────
+# "inside" : part bbox의 center point가 main bbox 안에 있어야 통과 (_is_center_inside)
+# "overlap": part bbox와 main bbox가 겹치기만 해도 통과 (_is_overlap)
+#
+# HTP 손그림 특성상 경계 부위(edge-type part)는 main bbox 밖으로 중심이 벗어나는 경우가
+# 많아 "inside" 정책을 적용하면 false negative가 발생한다.
+#   chimney → 지붕 위로 솟아오름 / shoes → person bbox 아래로 내려감
+#   roots   → tree bbox 아래     / branch·fruit·flower → 수관 외곽에 걸림
+#   road    → house 앞으로 뻗어 나감
+#
+# 한글/영문 키 중복: YOLO 모델에 따라 raw label이 한글 또는 영문으로 출력되므로
+# 양쪽을 모두 등록해야 한다. _clean_label(lowercase+strip) 처리 후 조회.
+#
+# foot(inside) vs shoes(overlap):
+#   foot/발은 신체 부위로 person bbox 안에 중심이 있어야 정상.
+#   shoes/sneakers는 신체 외부 착용물로 bbox 하단 아래로 벗어날 수 있어 완화 정책 적용.
+SPATIAL_POLICY: Dict[str, str] = {
+    # ── inner parts: center-inside ────────────────────────────────
+    "eye": "inside",        "눈": "inside",
+    "nose": "inside",       "코": "inside",
+    "mouth": "inside",      "입": "inside",
+    "ear": "inside",        "귀": "inside",
+    "face": "inside",       "얼굴": "inside",
+    "head": "inside",       "머리": "inside",
+    "neck": "inside",       "목": "inside",
+    "body": "inside",       "몸통": "inside",       "몸": "inside",
+    "upper_body": "inside",
+    "arm": "inside",        "팔": "inside",
+    "hand": "inside",       "손": "inside",
+    "leg": "inside",        "다리": "inside",
+    "foot": "inside",       "발": "inside",         "feet": "inside",
+    "hair": "inside",
+    "door": "inside",       "문": "inside",
+    "window": "inside",     "창문": "inside",
+    "roof": "inside",       "지붕": "inside",
+    "wall": "inside",       "집벽": "inside",
+    "trunk": "inside",      "줄기": "inside",       "나무줄기": "inside",
+    "crown": "inside",      "수관": "inside",
+    # ── edge parts: overlap ───────────────────────────────────────
+    "chimney": "overlap",   "굴뚝": "overlap",
+    "smoke": "overlap",     "연기": "overlap",
+    "shoes": "overlap",     "신발": "overlap",
+    "sneakers": "overlap",
+    "male_shoes": "overlap",
+    "female_shoes": "overlap",
+    "root": "overlap",      "뿌리": "overlap",
+    "branch": "overlap",    "가지": "overlap",
+    "fruit": "overlap",     "열매": "overlap",
+    "flower": "overlap",    "꽃": "overlap",
+    "road": "overlap",      "길": "overlap",
+}
+# ─────────────────────────────────────────────────────────────────────────────
+
+
 def _load_yolo_models() -> Dict[str, Any]:
     """house / tree / person 모델을 각각 한 번만 로드해서 재사용한다."""
     global _yolo_models
@@ -516,27 +570,43 @@ def _is_center_inside(
     )
 
 
-def _count_parts_inside(
+def _get_spatial_policy(label: str) -> str:
+    """SPATIAL_POLICY에서 해당 label의 검증 정책 반환. 미등록 label은 'inside' 기본값."""
+    return SPATIAL_POLICY.get(_clean_label(label), "inside")
+
+
+def _passes_spatial_check(
+    part_bbox: Dict[str, int],
+    main_bbox: Optional[Dict[str, int]],
+    policy: str,
+) -> bool:
+    if main_bbox is None:
+        return False
+    if policy == "overlap":
+        return _is_overlap(part_bbox, main_bbox)
+    return _is_center_inside(part_bbox, main_bbox)
+
+
+def _count_parts_spatial(
     detections: List[Dict[str, Any]],
     labels: List[str],
     main_bbox: Optional[Dict[str, int]],
 ) -> int:
-    """main bbox 내부에 center가 있는 part detection만 카운트."""
+    """각 part label의 SPATIAL_POLICY에 따라 공간 검증 후 카운트."""
     label_set = {_clean_label(label) for label in labels}
     return sum(
         1 for d in detections
         if _clean_label(d["label"]) in label_set
-        and _is_center_inside(d["bbox"], main_bbox)
+        and _passes_spatial_check(d["bbox"], main_bbox, _get_spatial_policy(d["label"]))
     )
 
 
-def _has_part_inside(
+def _has_part_spatial(
     detections: List[Dict[str, Any]],
     labels: List[str],
     main_bbox: Optional[Dict[str, int]],
 ) -> bool:
-    """main bbox 내부에 center가 있는 part가 존재하는지 확인."""
-    return _count_parts_inside(detections, labels, main_bbox) > 0
+    return _count_parts_spatial(detections, labels, main_bbox) > 0
 
 
 def _create_visual_features_from_yolo(
@@ -612,11 +682,11 @@ def _create_visual_features_from_yolo(
 
         if target_type == "house":
             feature["parts"] = {
-                "door":    {"detected": _has_part_inside(detections, ["문", "door"], bbox)},
-                "window":  {"count": _count_parts_inside(detections, ["창문", "window"], bbox)},
-                "roof":    {"detected": _has_part_inside(detections, ["지붕", "roof"], bbox)},
-                "chimney": {"detected": _has_part_inside(detections, ["굴뚝", "chimney"], bbox)},
-                "wall":    {"detected": _has_part_inside(detections, ["집벽", "wall"], bbox)},
+                "door":    {"detected": _has_part_spatial(detections, ["문", "door"], bbox)},
+                "window":  {"count": _count_parts_spatial(detections, ["창문", "window"], bbox)},
+                "roof":    {"detected": _has_part_spatial(detections, ["지붕", "roof"], bbox)},
+                "chimney": {"detected": _has_part_spatial(detections, ["굴뚝", "chimney"], bbox)},
+                "wall":    {"detected": _has_part_spatial(detections, ["집벽", "wall"], bbox)},
             }
             if feature["parts"]["door"]["detected"]:
                 feature["tags"].append("door_detected")
@@ -629,12 +699,12 @@ def _create_visual_features_from_yolo(
 
         elif target_type == "tree":
             feature["parts"] = {
-                "trunk":  {"detected": _has_part_inside(detections, ["줄기", "나무줄기", "trunk"], bbox)},
-                "crown":  {"detected": _has_part_inside(detections, ["수관", "crown"], bbox)},
-                "branch": {"detected": _has_part_inside(detections, ["branch"], bbox)},
-                "roots":  {"detected": _has_part_inside(detections, ["뿌리", "root"], bbox)},
-                "fruit":  {"count": _count_parts_inside(detections, ["열매", "fruit"], bbox)},
-                "flower": {"count": _count_parts_inside(detections, ["꽃", "flower"], bbox)},
+                "trunk":  {"detected": _has_part_spatial(detections, ["줄기", "나무줄기", "trunk"], bbox)},
+                "crown":  {"detected": _has_part_spatial(detections, ["수관", "crown"], bbox)},
+                "branch": {"detected": _has_part_spatial(detections, ["branch"], bbox)},
+                "roots":  {"detected": _has_part_spatial(detections, ["뿌리", "root"], bbox)},
+                "fruit":  {"count": _count_parts_spatial(detections, ["열매", "fruit"], bbox)},
+                "flower": {"count": _count_parts_spatial(detections, ["꽃", "flower"], bbox)},
             }
             if feature["parts"]["trunk"]["detected"]:
                 feature["tags"].append("trunk_detected")
@@ -649,13 +719,13 @@ def _create_visual_features_from_yolo(
 
         elif target_type == "person":
             feature["parts"] = {
-                "head":  {"detected": _has_part_inside(detections, ["머리", "head", "얼굴", "face"], bbox)},
-                "face":  {"detected": _has_part_inside(detections, ["얼굴", "face", "눈", "eye", "코", "nose", "입", "mouth"], bbox)},
-                "hands": {"count": _count_parts_inside(detections, ["손", "hand"], bbox)},
-                "feet":  {"count": _count_parts_inside(detections, ["발", "foot", "feet"], bbox)},
-                "arms":  {"count": _count_parts_inside(detections, ["팔", "arm"], bbox)},
-                "legs":  {"count": _count_parts_inside(detections, ["다리", "leg"], bbox)},
-                "shoes": {"detected": _has_part_inside(detections, ["male_shoes", "female_shoes", "sneakers", "shoes"], bbox)},
+                "head":  {"detected": _has_part_spatial(detections, ["머리", "head", "얼굴", "face"], bbox)},
+                "face":  {"detected": _has_part_spatial(detections, ["얼굴", "face", "눈", "eye", "코", "nose", "입", "mouth"], bbox)},
+                "hands": {"count": _count_parts_spatial(detections, ["손", "hand"], bbox)},
+                "feet":  {"count": _count_parts_spatial(detections, ["발", "foot", "feet"], bbox)},
+                "arms":  {"count": _count_parts_spatial(detections, ["팔", "arm"], bbox)},
+                "legs":  {"count": _count_parts_spatial(detections, ["다리", "leg"], bbox)},
+                "shoes": {"detected": _has_part_spatial(detections, ["male_shoes", "female_shoes", "sneakers", "shoes"], bbox)},
             }
             if feature["parts"]["head"]["detected"]:
                 feature["tags"].append("head_detected")
