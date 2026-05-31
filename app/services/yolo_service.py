@@ -1,5 +1,5 @@
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import cv2
 import numpy as np
@@ -254,23 +254,31 @@ MAIN_OBJECT_LABELS: Dict[str, set] = {
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-# ── Part별 공간 검증 정책 ──────────────────────────────────────────────────────
-# "inside" : part bbox의 center point가 main bbox 안에 있어야 통과 (_is_center_inside)
-# "overlap": part bbox와 main bbox가 겹치기만 해도 통과 (_is_overlap)
+# ── Spatial Policy 진화 단계 ──────────────────────────────────────────────────
+# Phase 1: _is_center_inside 단일 정책
+# Phase 2: SPATIAL_POLICY — inside / overlap 분리
+# Phase 3: directional adjacency + fallback chain  ← 현재
+# Phase 4: (장기) scene graph 기반 관계 추론
+# ─────────────────────────────────────────────────────────────────────────────
 #
-# HTP 손그림 특성상 경계 부위(edge-type part)는 main bbox 밖으로 중심이 벗어나는 경우가
-# 많아 "inside" 정책을 적용하면 false negative가 발생한다.
-#   chimney → 지붕 위로 솟아오름 / shoes → person bbox 아래로 내려감
-#   roots   → tree bbox 아래     / branch·fruit·flower → 수관 외곽에 걸림
-#   road    → house 앞으로 뻗어 나감
+# ── Part별 공간 검증 정책 ──────────────────────────────────────────────────────
+# "inside"        : part center point가 main bbox 내부 (_is_center_inside)
+# "overlap"       : part bbox와 main bbox가 겹치기만 해도 통과 (_is_overlap)
+# "adjacent_below": 아래 방향 인접 — x축 겹침 비율 ≥ 30% + y-gap ≤ main_height*0.3
+#                   shoes / roots / road 처럼 parent 하단 밖으로 뻗는 요소
+# "adjacent_any"  : 사방 인접 — parent bbox를 상하좌우 20% 확장 후 overlap
+#                   branch / fruit / flower 처럼 수관 경계 밖 어느 방향으로든 걸리는 요소
+#
+# fallback chain: 값이 list이면 순서대로 시도, 하나라도 통과하면 인정.
+#   예) ["adjacent_below", "overlap"] → 그림마다 shoes가 bbox 안/밖이 달라도 커버.
 #
 # 한글/영문 키 중복: YOLO 모델에 따라 raw label이 한글 또는 영문으로 출력되므로
 # 양쪽을 모두 등록해야 한다. _clean_label(lowercase+strip) 처리 후 조회.
 #
-# foot(inside) vs shoes(overlap):
-#   foot/발은 신체 부위로 person bbox 안에 중심이 있어야 정상.
-#   shoes/sneakers는 신체 외부 착용물로 bbox 하단 아래로 벗어날 수 있어 완화 정책 적용.
-SPATIAL_POLICY: Dict[str, str] = {
+# foot(inside) vs shoes(adjacent_below+overlap):
+#   foot/발은 신체 부위로 person bbox 안에 center가 있어야 정상.
+#   shoes/sneakers는 외부 착용물로 bbox 하단 밖으로 벗어나는 경우가 자연스러움.
+SPATIAL_POLICY: Dict[str, Union[str, List[str]]] = {
     # ── inner parts: center-inside ────────────────────────────────
     "eye": "inside",        "눈": "inside",
     "nose": "inside",       "코": "inside",
@@ -292,18 +300,29 @@ SPATIAL_POLICY: Dict[str, str] = {
     "wall": "inside",       "집벽": "inside",
     "trunk": "inside",      "줄기": "inside",       "나무줄기": "inside",
     "crown": "inside",      "수관": "inside",
-    # ── edge parts: overlap ───────────────────────────────────────
+    # ── edge parts: strict overlap ────────────────────────────────
+    # chimney/smoke는 지붕과 실제로 겹치는 구조이므로 strict overlap으로 충분
     "chimney": "overlap",   "굴뚝": "overlap",
     "smoke": "overlap",     "연기": "overlap",
-    "shoes": "overlap",     "신발": "overlap",
-    "sneakers": "overlap",
-    "male_shoes": "overlap",
-    "female_shoes": "overlap",
-    "root": "overlap",      "뿌리": "overlap",
-    "branch": "overlap",    "가지": "overlap",
-    "fruit": "overlap",     "열매": "overlap",
-    "flower": "overlap",    "꽃": "overlap",
-    "road": "overlap",      "길": "overlap",
+    # ── directional: 아래 방향 인접 (fallback chain) ──────────────
+    # 손그림마다 shoes/roots가 person/tree bbox 안에 있기도, 바로 아래에 있기도 함
+    "shoes":       ["adjacent_below", "overlap"],
+    "신발":        ["adjacent_below", "overlap"],
+    "sneakers":    ["adjacent_below", "overlap"],
+    "male_shoes":  ["adjacent_below", "overlap"],
+    "female_shoes":["adjacent_below", "overlap"],
+    "root":        ["adjacent_below", "overlap"],
+    "뿌리":        ["adjacent_below", "overlap"],
+    "road":        ["adjacent_below", "overlap"],
+    "길":          ["adjacent_below", "overlap"],
+    # ── omnidirectional: 수관 경계 밖 사방 (fallback chain) ───────
+    # branch/fruit/flower는 수관 내부에 있을 수도, 경계 밖으로 삐져나올 수도 있음
+    "branch":  ["adjacent_any", "overlap"],
+    "가지":    ["adjacent_any", "overlap"],
+    "fruit":   ["adjacent_any", "overlap"],
+    "열매":    ["adjacent_any", "overlap"],
+    "flower":  ["adjacent_any", "overlap"],
+    "꽃":      ["adjacent_any", "overlap"],
 }
 # ─────────────────────────────────────────────────────────────────────────────
 
@@ -425,6 +444,54 @@ def _is_touching(
     horizontal_gap = max(bbox_b["x1"] - bbox_a["x2"], bbox_a["x1"] - bbox_b["x2"], 0)
     vertical_gap = max(bbox_b["y1"] - bbox_a["y2"], bbox_a["y1"] - bbox_b["y2"], 0)
     return horizontal_gap <= threshold and vertical_gap <= threshold
+
+
+def _is_adjacent_below(
+    part_bbox: Dict[str, int],
+    main_bbox: Dict[str, int],
+    max_gap_ratio: float = 0.30,
+    min_x_overlap_ratio: float = 0.30,
+) -> bool:
+    """part가 main bbox 하단에 인접한지 확인.
+
+    조건 1 (x축): part와 main bbox의 x 겹침이 part 너비의 min_x_overlap_ratio 이상.
+    조건 2 (y축): part 상단(y1)이 main bbox 하단(y2) + main_height * max_gap_ratio 이내.
+
+    손그림에서 shoes/roots처럼 parent 하단 밖으로 뻗는 요소에 사용한다.
+    threshold를 절대 px가 아닌 parent 크기 대비 상대 비율로 지정해 이미지 스케일에 무관하다.
+    """
+    x_overlap = max(
+        0,
+        min(part_bbox["x2"], main_bbox["x2"]) - max(part_bbox["x1"], main_bbox["x1"]),
+    )
+    part_width = max(part_bbox["x2"] - part_bbox["x1"], 1)
+    if x_overlap / part_width < min_x_overlap_ratio:
+        return False
+
+    main_height = max(main_bbox["y2"] - main_bbox["y1"], 1)
+    gap = part_bbox["y1"] - main_bbox["y2"]  # 양수=완전히 아래, 음수=겹침
+    return gap <= main_height * max_gap_ratio
+
+
+def _is_adjacent_any(
+    part_bbox: Dict[str, int],
+    main_bbox: Dict[str, int],
+    expand_ratio: float = 0.20,
+) -> bool:
+    """main bbox를 상하좌우 expand_ratio만큼 확장한 영역과 part bbox가 겹치는지 확인.
+
+    확장 크기는 main bbox 자신의 폭/높이 대비 상대 비율이므로 이미지 크기에 무관하다.
+    branch/fruit/flower처럼 수관 경계 밖 어느 방향으로도 삐져나올 수 있는 요소에 사용한다.
+    """
+    w = max(main_bbox["x2"] - main_bbox["x1"], 1)
+    h = max(main_bbox["y2"] - main_bbox["y1"], 1)
+    expanded = {
+        "x1": main_bbox["x1"] - int(w * expand_ratio),
+        "y1": main_bbox["y1"] - int(h * expand_ratio),
+        "x2": main_bbox["x2"] + int(w * expand_ratio),
+        "y2": main_bbox["y2"] + int(h * expand_ratio),
+    }
+    return _is_overlap(part_bbox, expanded)
 
 
 def _normalize_label(raw_label: str) -> str:
@@ -570,21 +637,39 @@ def _is_center_inside(
     )
 
 
-def _get_spatial_policy(label: str) -> str:
+def _get_spatial_policy(label: str) -> Union[str, List[str]]:
     """SPATIAL_POLICY에서 해당 label의 검증 정책 반환. 미등록 label은 'inside' 기본값."""
     return SPATIAL_POLICY.get(_clean_label(label), "inside")
+
+
+def _apply_single_policy(
+    policy: str,
+    part_bbox: Dict[str, int],
+    main_bbox: Dict[str, int],
+) -> bool:
+    if policy == "overlap":
+        return _is_overlap(part_bbox, main_bbox)
+    if policy == "adjacent_below":
+        return _is_adjacent_below(part_bbox, main_bbox)
+    if policy == "adjacent_any":
+        return _is_adjacent_any(part_bbox, main_bbox)
+    return _is_center_inside(part_bbox, main_bbox)  # "inside" default
 
 
 def _passes_spatial_check(
     part_bbox: Dict[str, int],
     main_bbox: Optional[Dict[str, int]],
-    policy: str,
+    label: str,
 ) -> bool:
+    """label의 SPATIAL_POLICY를 조회해 공간 검증을 수행한다.
+
+    policy가 list이면 fallback chain으로 동작: 순서대로 시도해 하나라도 통과하면 True.
+    """
     if main_bbox is None:
         return False
-    if policy == "overlap":
-        return _is_overlap(part_bbox, main_bbox)
-    return _is_center_inside(part_bbox, main_bbox)
+    policy = _get_spatial_policy(label)
+    policies = [policy] if isinstance(policy, str) else policy
+    return any(_apply_single_policy(p, part_bbox, main_bbox) for p in policies)
 
 
 def _count_parts_spatial(
@@ -597,7 +682,7 @@ def _count_parts_spatial(
     return sum(
         1 for d in detections
         if _clean_label(d["label"]) in label_set
-        and _passes_spatial_check(d["bbox"], main_bbox, _get_spatial_policy(d["label"]))
+        and _passes_spatial_check(d["bbox"], main_bbox, d["label"])
     )
 
 
