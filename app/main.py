@@ -14,7 +14,7 @@ app.add_middleware(
     allow_origins=[
         "http://localhost:5173",
         "http://localhost:3000",
-        "sai-gdam.vercel.app",
+        "https://sai-gdam.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
