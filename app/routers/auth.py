@@ -29,7 +29,7 @@ GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
 # 배포 예: https://프론트도메인/auth/callback
 FRONTEND_AUTH_CALLBACK_URL = os.getenv(
     "FRONTEND_AUTH_CALLBACK_URL",
-    "http://localhost:5173/auth/callback",
+    "https://sai-gdam.vercel.app/auth/callback",
 )
 
 
