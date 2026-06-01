@@ -11,7 +11,11 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # 배포 시 프론트엔드 주소로 제한
+    allow_origins=[
+        "http://localhost:5173",
+        "http://localhost:3000",
+        "sai-gdam.vercel.app",
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
