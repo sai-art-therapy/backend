@@ -108,7 +108,7 @@ GDAM Backend는 아동 HTP(집-나무-사람) 그림 검사와 PDI 답변을 기
 | Auth            | Google OAuth, JWT, python-jose |
 | AI / LLM        | OpenAI API                     |
 | RAG / Vector DB | ChromaDB, OpenAI Embedding     |
-| Image Analysis  | YOLOv8                         |
+| Image Analysis  | YOLOv8, OpenCV, Pillow         |
 | Config          | Pydantic, python-dotenv        |
 | Infra           | AWS EC2, Nginx, HTTPS(Certbot) |
 
