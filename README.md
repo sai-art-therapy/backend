@@ -42,7 +42,7 @@ GDAM Backend는 아동 HTP(집-나무-사람) 그림 검사와 PDI 답변을 기
 | --- | --- | --- |
 | 김민하 | Backend / Database / RAG / Infra | FastAPI 서버 구조 설계, PostgreSQL 모델 및 API 구현, 양육 가이드 데이터셋 구축 및 ChromaDB 연동, HTP 지식 데이터 RAG 구축, OpenAI 기반 챗봇 구현, 홈/검사/리포트/채팅 API 개발, AWS EC2 배포, Nginx 및 HTTPS 설정 |
 | 김하영 | Auth / PDI / Report | Google OAuth 로그인, JWT 인증, HTP 학술 지식 데이터셋 구축 및 정제, PDI 질문 생성 및 답변 저장 로직, HTP 리포트 생성 파이프라인 구현, 리포트 생성용 프롬프트 및 결과 구조 설계 |
-| 김민지 | AI Integration / Image Analysis | YOLO 기반 집·나무·사람 객체 탐지 모델 연동, OpenCV 기반 시각 특징 추출, 이미지 분석 결과 생성 및 리포트 연동 |
+| 김민지 | AI Integration / Image Analysis | HTP 데이터셋 구축 및 객체 클래스 재정의, YOLOv8 기반 집·나무·사람 객체 탐지 모델 Fine-tuning 및 추론, 객체 탐지 결과 검증 및 후처리 로직 적용, 이미지 분석 결과 리포트 생성 기능 연동 |
 ---
 
 ## 주요 기능
@@ -108,7 +108,7 @@ GDAM Backend는 아동 HTP(집-나무-사람) 그림 검사와 PDI 답변을 기
 | Auth            | Google OAuth, JWT, python-jose |
 | AI / LLM        | OpenAI API                     |
 | RAG / Vector DB | ChromaDB, OpenAI Embedding     |
-| Image Analysis  | YOLOv8, OpenCV, Pillow         |
+| Image Analysis  | YOLOv8                         |
 | Config          | Pydantic, python-dotenv        |
 | Infra           | AWS EC2, Nginx, HTTPS(Certbot) |
 
