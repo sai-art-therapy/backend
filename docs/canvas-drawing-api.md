@@ -177,3 +177,13 @@ export const uploadCanvasDrawing = async (
 ```bash
 python scripts/create_tables.py
 ```
+
+Nginx를 앞단에 사용하는 서버는 이미지 10MB, JSON 15MB, multipart overhead를
+수용하도록 HTTPS server block에 아래 설정이 필요합니다.
+
+```nginx
+client_max_body_size 30M;
+client_body_timeout 120s;
+```
+
+설정 변경 후 `nginx -t`로 검증하고 Nginx를 reload합니다.
