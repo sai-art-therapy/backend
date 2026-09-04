@@ -14,7 +14,7 @@ Content-Type: multipart/form-data
 | 필드 | 형식 | 필수 | 설명 |
 | --- | --- | --- | --- |
 | `file` | PNG/JPEG/WEBP 파일 | O | 캔버스를 이미지로 내보낸 결과. 최대 10MB |
-| `drawing_data` | JSON 문자열 | O | 캔버스 크기, 시간, stroke/point 데이터 |
+| `drawing_data` | `application/json` 파일 | O | 캔버스 크기, 시간, stroke/point 데이터. 최대 15MB |
 
 `drawing_data` 예시:
 
@@ -103,11 +103,16 @@ export const uploadCanvasDrawing = async (
 ) => {
   const formData = new FormData();
   formData.append("file", file);
-  formData.append("drawing_data", JSON.stringify(drawingData));
+  formData.append(
+    "drawing_data",
+    new Blob([JSON.stringify(drawingData)], { type: "application/json" }),
+    "drawing.json",
+  );
 
   const response = await axiosInstance.post(
     `/tests/${testId}/drawing`,
     formData,
+    { timeout: 60_000 },
   );
   return response.data;
 };
@@ -115,6 +120,9 @@ export const uploadCanvasDrawing = async (
 
 브라우저가 `multipart/form-data`의 boundary를 자동 생성해야 하므로 명시적인
 `Content-Type` 헤더는 넣지 않습니다.
+
+`drawing_data`는 일반 문자열 파트가 아니라 반드시 파일 파트로 보내야 합니다.
+일반 문자열 파트는 웹 서버의 multipart 필드 크기 제한에 걸릴 수 있습니다.
 
 ## 성공 응답
 
