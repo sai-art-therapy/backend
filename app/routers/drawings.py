@@ -2,7 +2,7 @@ from io import BytesIO
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 from PIL import Image, UnidentifiedImageError
 from sqlalchemy.orm import Session
 
@@ -13,6 +13,7 @@ from app.models.htp_test import HtpTest
 from app.models.user import User
 from app.schemas.tests import CanvasDrawingUploadResponse
 from app.services.canvas_drawing_service import (
+    MAX_DRAWING_DATA_BYTES,
     CanvasDrawingValidationError,
     canvas_payload_to_dict,
     parse_and_validate_canvas_drawing,
@@ -106,11 +107,11 @@ def _rounded_drawing_minutes(duration_ms: int) -> int:
 )
 async def upload_canvas_drawing(
     test_id: int,
-    drawing_data: str = Form(
+    drawing_data: UploadFile = File(
         ...,
         description=(
             "캔버스 크기, 전체 소요 시간, stroke별 좌표/시간/실측 필압을 담은 "
-            "JSON 문자열"
+            "application/json 파일"
         ),
     ),
     file: UploadFile = File(
@@ -130,8 +131,31 @@ async def upload_canvas_drawing(
             },
         )
 
+    drawing_data_bytes = await drawing_data.read(MAX_DRAWING_DATA_BYTES + 1)
+    if len(drawing_data_bytes) > MAX_DRAWING_DATA_BYTES:
+        raise HTTPException(
+            status_code=413,
+            detail={
+                "code": "drawing_data_too_large",
+                "message": (
+                    f"drawing_data는 {MAX_DRAWING_DATA_BYTES // (1024 * 1024)}MB "
+                    "이하여야 합니다."
+                ),
+            },
+        )
     try:
-        payload, drawing_stats = parse_and_validate_canvas_drawing(drawing_data)
+        drawing_data_text = drawing_data_bytes.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "invalid_json_encoding",
+                "message": "drawing_data는 UTF-8 JSON 파일이어야 합니다.",
+            },
+        ) from exc
+
+    try:
+        payload, drawing_stats = parse_and_validate_canvas_drawing(drawing_data_text)
     except CanvasDrawingValidationError as exc:
         raise HTTPException(
             status_code=(
