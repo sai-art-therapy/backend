@@ -60,6 +60,13 @@ class HtpTest(Base):
     user = relationship("User", back_populates="htp_tests")
     child = relationship("Child", back_populates="htp_tests")
     chat_sessions = relationship("ChatSession", back_populates="htp_test")
+    canvas_drawing = relationship(
+        "HtpCanvasDrawing",
+        back_populates="htp_test",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        uselist=False,
+    )
 
     pdi_interactions = relationship(
         "HtpPdiInteraction",

@@ -1,7 +1,17 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import auth, home, children, tests, reports, chat, mypage, rag_admin
+from app.routers import (
+    auth,
+    chat,
+    children,
+    drawings,
+    home,
+    mypage,
+    rag_admin,
+    reports,
+    tests,
+)
 
 app = FastAPI(
     title="그담 API",
@@ -25,6 +35,7 @@ app.include_router(auth.router, prefix="/auth", tags=["Auth"])
 app.include_router(home.router, prefix="/home", tags=["Home"])
 app.include_router(children.router, prefix="/children", tags=["Children"])
 app.include_router(tests.router, prefix="/tests", tags=["Tests"])
+app.include_router(drawings.router, prefix="/tests", tags=["Tests"])
 app.include_router(reports.router, prefix="/reports", tags=["Reports"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(mypage.router, prefix="/mypage", tags=["Mypage"])
