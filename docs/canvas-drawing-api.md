@@ -140,6 +140,18 @@ export const uploadCanvasDrawing = async (
 
 성공 후에는 기존과 동일하게 `POST /tests/{test_id}/analyze`를 호출합니다.
 
+### 최신 프론트 `dev` 브랜치에서 필요한 화면 분기
+
+현재 `TestLoadingStep.tsx`는 분석 성공 후 항상 `/test-time-input-step`으로 이동합니다.
+직접 그리기는 `duration_ms`를 백엔드에 함께 저장하므로 시간을 다시 입력받지 않습니다.
+
+- 카메라/앨범: 기존처럼 `/test-time-input-step`으로 이동
+- 앱에서 직접 그리기: `/test-question-intro-step`으로 바로 이동
+
+직접 그리기 업로드 성공 시 라우터 state 등에 `drawingSource: "canvas"`를 전달하고,
+분석 성공 시 이 값으로 다음 화면을 분기하면 됩니다. 캔버스 흐름에서는
+`POST /tests/{test_id}/pdi/time`을 다시 호출하지 않습니다.
+
 ## 오류 응답
 
 - `404`: 로그인 사용자의 검사 ID가 아님
