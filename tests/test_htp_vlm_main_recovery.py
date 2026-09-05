@@ -56,6 +56,10 @@ class HtpVlmMainRecoveryTests(unittest.TestCase):
                 "missing": [
                     {"label": "house", "present": False, "bbox": None},
                     {"label": "person", "present": False, "bbox": None},
+                ] + [
+                    {"label": label, "present": False, "bbox": None}
+                    for parent in ("house", "person")
+                    for label in vlm._RECOVERED_PARENT_DETAILS[parent]
                 ],
             })
             with (
@@ -123,6 +127,7 @@ class HtpVlmMainRecoveryTests(unittest.TestCase):
                 _detection("trunk", 0.8, {"x1": 270, "y1": 100, "x2": 320, "y2": 270}),
                 _detection("crown", 0.8, {"x1": 240, "y1": 30, "x2": 360, "y2": 140}),
                 _detection("sneakers", 0.3, {"x1": 125, "y1": 160, "x2": 155, "y2": 185}),
+                _detection("head", 0.8, {"x1": 130, "y1": 25, "x2": 175, "y2": 70}),
             ]
             payload = {
                 "verified": [{"candidate_id": 0, "present": False}],
@@ -133,6 +138,21 @@ class HtpVlmMainRecoveryTests(unittest.TestCase):
                     {"label": "flower", "present": False, "bbox": None},
                     {"label": "house", "present": True, "bbox": [10, 10, 100, 120]},
                     {"label": "person", "present": True, "bbox": [110, 20, 200, 210]},
+                    {"label": "wall", "present": True, "bbox": [20, 40, 90, 115]},
+                    {"label": "roof", "present": True, "bbox": [20, 15, 90, 45]},
+                    {"label": "door", "present": False, "bbox": None},
+                    {"label": "window", "present": False, "bbox": None},
+                    {"label": "chimney", "present": True, "bbox": [75, 10, 88, 35]},
+                    {"label": "head", "present": True, "bbox": [130, 25, 175, 70]},
+                    {"label": "face", "present": True, "bbox": [135, 35, 170, 65]},
+                    {"label": "eye", "present": False, "bbox": None},
+                    {"label": "nose", "present": False, "bbox": None},
+                    {"label": "mouth", "present": False, "bbox": None},
+                    {"label": "arm", "present": True, "bbox": [115, 70, 135, 145]},
+                    {"label": "hand", "present": True, "bbox": [110, 135, 130, 155]},
+                    {"label": "leg", "present": True, "bbox": [135, 130, 155, 195]},
+                    {"label": "foot", "present": True, "bbox": [130, 190, 155, 205]},
+                    {"label": "shoes", "present": False, "bbox": None},
                 ],
             }
             fake_client = _FakeClient(payload)
@@ -154,12 +174,13 @@ class HtpVlmMainRecoveryTests(unittest.TestCase):
             self.assertEqual(len(fake_client.calls), 1)
             self.assertIsNone(metadata["error"])
             self.assertEqual(metadata["removed_count"], 1)
-            self.assertEqual(metadata["added_count"], 2)
+            self.assertEqual(metadata["added_count"], 10)
             labels = [item["label"] for item in corrected]
             self.assertIn("house", labels)
             self.assertIn("person", labels)
             self.assertNotIn("sneakers", labels)
             self.assertNotIn("fruit", labels)
+            self.assertEqual(labels.count("head"), 1)
             recovered = [
                 item for item in corrected
                 if item["label"] in {"house", "person"}
@@ -192,7 +213,22 @@ class HtpVlmMainRecoveryTests(unittest.TestCase):
         self.assertTrue(features["tree"]["detected"])
         self.assertTrue(features["tree"]["parts"]["trunk"]["detected"])
         self.assertEqual(features["tree"]["parts"]["fruit"]["count"], 0)
+        self.assertTrue(features["house"]["parts"]["wall"]["detected"])
+        self.assertTrue(features["house"]["parts"]["roof"]["detected"])
+        self.assertTrue(features["house"]["parts"]["chimney"]["detected"])
+        self.assertFalse(features["house"]["parts"]["door"]["detected"])
+        self.assertEqual(features["house"]["parts"]["window"]["count"], 0)
+        self.assertIn("roof_detected", features["house"]["tags"])
+        self.assertIn("door_not_detected", features["house"]["tags"])
+        self.assertTrue(features["person"]["parts"]["head"]["detected"])
+        self.assertTrue(features["person"]["parts"]["face"]["detected"])
+        self.assertEqual(features["person"]["parts"]["arms"]["count"], 1)
+        self.assertEqual(features["person"]["parts"]["hands"]["count"], 1)
+        self.assertEqual(features["person"]["parts"]["legs"]["count"], 1)
+        self.assertEqual(features["person"]["parts"]["feet"]["count"], 1)
         self.assertFalse(features["person"]["parts"]["shoes"]["detected"])
+        self.assertNotIn("hands_not_detected", features["person"]["tags"])
+        self.assertNotIn("feet_not_detected", features["person"]["tags"])
         display = yolo._create_display_detections(corrected)
         self.assertEqual({item["type"] for item in display}, {"house", "person", "tree"})
         self.assertEqual(
