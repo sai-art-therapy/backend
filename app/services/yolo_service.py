@@ -573,6 +573,7 @@ def _create_display_detections(
 def _pick_best_bbox(
     detections: List[Dict[str, Any]],
     target_type: str,
+    allow_subobject_fallback: bool = True,
 ) -> Optional[Dict[str, int]]:
     """대표 bbox 선택: main object label 우선, 없으면 sub-object fallback.
 
@@ -589,6 +590,9 @@ def _pick_best_bbox(
     ]
     if main_candidates:
         return max(main_candidates, key=lambda d: d["confidence"])["bbox"]
+
+    if not allow_subobject_fallback:
+        return None
 
     # 2순위: normalize 기준 같은 타입의 sub-object (fallback)
     sub_candidates = [
@@ -673,6 +677,31 @@ def _passes_spatial_check(
     return any(_apply_single_policy(p, part_bbox, main_bbox) for p in policies)
 
 
+def _is_shoe_spatially_consistent(
+    shoe_bbox: Dict[str, int],
+    person_bbox: Optional[Dict[str, int]],
+    label: str = "shoes",
+) -> bool:
+    """Apply the existing shoe policy without accepting boxes wholly above a person."""
+    if person_bbox is None or shoe_bbox["y2"] < person_bbox["y1"]:
+        return False
+    return _passes_spatial_check(shoe_bbox, person_bbox, label)
+
+
+def _has_shoes_spatial(
+    detections: List[Dict[str, Any]],
+    person_bbox: Optional[Dict[str, int]],
+) -> bool:
+    shoe_labels = {"male_shoes", "female_shoes", "sneakers", "shoes"}
+    return any(
+        _clean_label(detection["label"]) in shoe_labels
+        and _is_shoe_spatially_consistent(
+            detection["bbox"], person_bbox, detection["label"]
+        )
+        for detection in detections
+    )
+
+
 def _count_parts_spatial(
     detections: List[Dict[str, Any]],
     labels: List[str],
@@ -744,6 +773,13 @@ def _get_vlm_relevant_detection_indexes(
             if _clean_label(detection["label"]) in main_labels
         ]
         if not main_candidates:
+            if target_type in {"house", "person"}:
+                relevant_indexes.update(
+                    index
+                    for index, detection in enumerate(detections)
+                    if _clean_label(detection["label"])
+                    in feature_part_labels[target_type]
+                )
             continue
         selected_index, selected_detection = max(
             main_candidates, key=lambda item: item[1]["confidence"]
@@ -774,9 +810,13 @@ def _create_visual_features_from_yolo(
     image_height, image_width = image.shape[:2]
     image_area = image_width * image_height
 
-    house_bbox = _pick_best_bbox(detections, "house")
+    house_bbox = _pick_best_bbox(
+        detections, "house", allow_subobject_fallback=False
+    )
     tree_bbox = _pick_best_bbox(detections, "tree")
-    person_bbox = _pick_best_bbox(detections, "person")
+    person_bbox = _pick_best_bbox(
+        detections, "person", allow_subobject_fallback=False
+    )
     tree_bboxes = [
         detection["bbox"]
         for detection in detections
@@ -884,7 +924,7 @@ def _create_visual_features_from_yolo(
                 "feet":  {"count": _count_parts_spatial(detections, ["발", "foot", "feet"], bbox)},
                 "arms":  {"count": _count_parts_spatial(detections, ["팔", "arm"], bbox)},
                 "legs":  {"count": _count_parts_spatial(detections, ["다리", "leg"], bbox)},
-                "shoes": {"detected": _has_part_spatial(detections, ["male_shoes", "female_shoes", "sneakers", "shoes"], bbox)},
+                "shoes": {"detected": _has_shoes_spatial(detections, bbox)},
             }
             if feature["parts"]["head"]["detected"]:
                 feature["tags"].append("head_detected")
