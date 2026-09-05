@@ -1,0 +1,249 @@
+{
+  "htp_test_01": {
+    "house": {
+      "window_count": 2,
+      "chimney": true
+    },
+    "tree": {
+      "fruit_count": 7,
+      "flower_count": 3,
+      "root": false,
+      "branch": false
+    },
+    "person": {
+      "shoes": true,
+      "hand_count": 2,
+      "foot_count": 2,
+      "arm_count": 2,
+      "leg_count": 2
+    }
+  },
+  "htp_test_02": {
+    "house": {
+      "window_count": 1,
+      "chimney": false
+    },
+    "tree": {
+      "fruit_count": 5,
+      "flower_count": 0,
+      "root": true,
+      "branch": false
+    },
+    "person": {
+      "shoes": true,
+      "hand_count": 2,
+      "foot_count": 2,
+      "arm_count": 2,
+      "leg_count": 2
+    }
+  },
+  "htp_test_03": {
+    "house": {
+      "window_count": 2,
+      "chimney": false
+    },
+    "tree": {
+      "fruit_count": 0,
+      "flower_count": 0,
+      "root": false,
+      "branch": false
+    },
+    "person": {
+      "shoes": false,
+      "hand_count": 2,
+      "foot_count": 2,
+      "arm_count": 2,
+      "leg_count": 2
+    }
+  },
+  "htp_test_04": {
+    "house": {
+      "window_count": 2,
+      "chimney": true
+    },
+    "tree": {
+      "fruit_count": 4,
+      "flower_count": 0,
+      "root": false,
+      "branch": false
+    },
+    "person": {
+      "shoes": true,
+      "hand_count": 2,
+      "foot_count": 2,
+      "arm_count": 2,
+      "leg_count": 2
+    }
+  },
+  "htp_test_05": {
+    "house": {
+      "window_count": 1,
+      "chimney": false
+    },
+    "tree": {
+      "fruit_count": 5,
+      "flower_count": 0,
+      "root": false,
+      "branch": true
+    },
+    "person": {
+      "shoes": true,
+      "hand_count": 2,
+      "foot_count": 2,
+      "arm_count": 2,
+      "leg_count": 2
+    }
+  },
+  "htp_test_06": {
+    "house": {
+      "window_count": 2,
+      "chimney": true
+    },
+    "tree": {
+      "fruit_count": 5,
+      "flower_count": 2,
+      "root": false,
+      "branch": false
+    },
+    "person": {
+      "shoes": true,
+      "hand_count": 2,
+      "foot_count": 2,
+      "arm_count": 2,
+      "leg_count": 2
+    }
+  },
+  "htp_test_07": {
+    "house": {
+      "window_count": 1,
+      "chimney": true
+    },
+    "tree": {
+      "fruit_count": 5,
+      "flower_count": 0,
+      "root": false,
+      "branch": false
+    },
+    "person": {
+      "shoes": false,
+      "hand_count": 2,
+      "foot_count": 2,
+      "arm_count": 2,
+      "leg_count": 2
+    }
+  },
+  "htp_test_08": {
+    "house": {
+      "window_count": 1,
+      "chimney": true
+    },
+    "tree": {
+      "fruit_count": 0,
+      "flower_count": null,
+      "root": false,
+      "branch": false
+    },
+    "person": {
+      "shoes": false,
+      "hand_count": 2,
+      "foot_count": 2,
+      "arm_count": 2,
+      "leg_count": 2
+    }
+  },
+  "htp_test_09": {
+    "house": {
+      "window_count": 2,
+      "chimney": true
+    },
+    "tree": {
+      "fruit_count": 7,
+      "flower_count": 2,
+      "root": false,
+      "branch": false
+    },
+    "person": {
+      "shoes": true,
+      "hand_count": 2,
+      "foot_count": 2,
+      "arm_count": 2,
+      "leg_count": 2
+    }
+  },
+  "htp_test_10": {
+    "house": {
+      "window_count": 1,
+      "chimney": false
+    },
+    "tree": {
+      "fruit_count": 5,
+      "flower_count": 0,
+      "root": false,
+      "branch": false
+    },
+    "person": {
+      "shoes": true,
+      "hand_count": 2,
+      "foot_count": 2,
+      "arm_count": 2,
+      "leg_count": 2
+    }
+  },
+  "htp_test_11": {
+    "house": {
+      "window_count": 2,
+      "chimney": true
+    },
+    "tree": {
+      "fruit_count": 0,
+      "flower_count": 6,
+      "root": false,
+      "branch": false
+    },
+    "person": {
+      "shoes": true,
+      "hand_count": 2,
+      "foot_count": 2,
+      "arm_count": 2,
+      "leg_count": 2
+    }
+  },
+  "htp_test_12": {
+    "house": {
+      "window_count": 2,
+      "chimney": true
+    },
+    "tree": {
+      "fruit_count": 6,
+      "flower_count": 1,
+      "root": true,
+      "branch": true
+    },
+    "person": {
+      "shoes": true,
+      "hand_count": 2,
+      "foot_count": 2,
+      "arm_count": 2,
+      "leg_count": 2
+    }
+  },
+  "htp_test_13": {
+    "house": {
+      "window_count": 1,
+      "chimney": true
+    },
+    "tree": {
+      "fruit_count": 5,
+      "flower_count": 1,
+      "root": false,
+      "branch": false
+    },
+    "person": {
+      "shoes": true,
+      "hand_count": 2,
+      "foot_count": 2,
+      "arm_count": 2,
+      "leg_count": 2
+    }
+  }
+}

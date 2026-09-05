@@ -20,6 +20,7 @@ from app.services.htp_analysis_service import (
     create_mock_visual_features,
     create_mock_yolo_result,
 )
+from app.services.htp_vlm_fallback_service import apply_vlm_fallback
 
 try:
     from ultralytics import YOLO
@@ -686,12 +687,79 @@ def _count_parts_spatial(
     )
 
 
+def _count_parts_spatial_any_parent(
+    detections: List[Dict[str, Any]],
+    labels: List[str],
+    main_bboxes: List[Dict[str, int]],
+) -> int:
+    """Count each part once when it passes against any valid parent bbox."""
+    label_set = {_clean_label(label) for label in labels}
+    return sum(
+        1 for detection in detections
+        if _clean_label(detection["label"]) in label_set
+        and any(
+            _passes_spatial_check(
+                detection["bbox"], main_bbox, detection["label"]
+            )
+            for main_bbox in main_bboxes
+        )
+    )
+
+
 def _has_part_spatial(
     detections: List[Dict[str, Any]],
     labels: List[str],
     main_bbox: Optional[Dict[str, int]],
 ) -> bool:
     return _count_parts_spatial(detections, labels, main_bbox) > 0
+
+
+def _get_vlm_relevant_detection_indexes(
+    detections: List[Dict[str, Any]],
+) -> Tuple[set, set]:
+    """Return detections that can affect current visual features and selected parents."""
+    feature_part_labels = {
+        "house": {
+            "문", "door", "창문", "window", "지붕", "roof", "굴뚝",
+            "chimney", "집벽", "wall",
+        },
+        "tree": {
+            "줄기", "나무줄기", "trunk", "수관", "crown", "branch",
+            "뿌리", "root", "열매", "fruit", "꽃", "flower",
+        },
+        "person": {
+            "머리", "head", "얼굴", "face", "눈", "eye", "코", "nose",
+            "입", "mouth", "손", "hand", "발", "foot", "feet", "팔",
+            "arm", "다리", "leg", "male_shoes", "female_shoes",
+            "sneakers", "shoes",
+        },
+    }
+    relevant_indexes = set()
+    selected_parent_types = set()
+
+    for target_type, main_labels in MAIN_OBJECT_LABELS.items():
+        main_candidates = [
+            (index, detection)
+            for index, detection in enumerate(detections)
+            if _clean_label(detection["label"]) in main_labels
+        ]
+        if not main_candidates:
+            continue
+        selected_index, selected_detection = max(
+            main_candidates, key=lambda item: item[1]["confidence"]
+        )
+        relevant_indexes.add(selected_index)
+        selected_parent_types.add(target_type)
+        main_bbox = selected_detection["bbox"]
+
+        for index, detection in enumerate(detections):
+            label = _clean_label(detection["label"])
+            if label not in feature_part_labels[target_type]:
+                continue
+            if _passes_spatial_check(detection["bbox"], main_bbox, label):
+                relevant_indexes.add(index)
+
+    return relevant_indexes, selected_parent_types
 
 
 def _create_visual_features_from_yolo(
@@ -709,6 +777,12 @@ def _create_visual_features_from_yolo(
     house_bbox = _pick_best_bbox(detections, "house")
     tree_bbox = _pick_best_bbox(detections, "tree")
     person_bbox = _pick_best_bbox(detections, "person")
+    tree_bboxes = [
+        detection["bbox"]
+        for detection in detections
+        if detection.get("use_for_analysis", True)
+        and _clean_label(detection["label"]) in MAIN_OBJECT_LABELS["tree"]
+    ]
 
     target_bboxes = {
         "house": house_bbox,
@@ -789,7 +863,7 @@ def _create_visual_features_from_yolo(
                 "branch": {"detected": _has_part_spatial(detections, ["branch"], bbox)},
                 "roots":  {"detected": _has_part_spatial(detections, ["뿌리", "root"], bbox)},
                 "fruit":  {"count": _count_parts_spatial(detections, ["열매", "fruit"], bbox)},
-                "flower": {"count": _count_parts_spatial(detections, ["꽃", "flower"], bbox)},
+                "flower": {"count": _count_parts_spatial_any_parent(detections, ["꽃", "flower"], tree_bboxes)},
             }
             if feature["parts"]["trunk"]["detected"]:
                 feature["tags"].append("trunk_detected")
@@ -1036,6 +1110,29 @@ def analyze_htp_image_with_yolo(original_image_path: str) -> Dict[str, Any]:
         if not all_detections:
             raise RuntimeError("3개 모델 모두 detection 결과가 없습니다.")
 
+        original_all_detections = all_detections
+        try:
+            vlm_relevant_indexes, selected_parent_types = (
+                _get_vlm_relevant_detection_indexes(original_all_detections)
+            )
+            all_detections, vlm_fallback_metadata = apply_vlm_fallback(
+                str(image_path),
+                original_all_detections,
+                set().union(*MAIN_OBJECT_LABELS.values()),
+                vlm_relevant_indexes,
+                selected_parent_types,
+            )
+        except Exception as exc:
+            # Keep VLM-only failures outside the existing YOLO mock fallback path.
+            all_detections = original_all_detections
+            vlm_fallback_metadata = {
+                "triggered": True,
+                "verified_count": 0,
+                "removed_count": 0,
+                "added_count": 0,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
         # 이후 로직은 기존 single-model 흐름과 완전히 동일
         display_detections = _create_display_detections(all_detections)
 
@@ -1062,6 +1159,7 @@ def analyze_htp_image_with_yolo(original_image_path: str) -> Dict[str, Any]:
             "display_detections": display_detections,
             "result_image_paths": result_image_paths,
             "all_detection_count": len(all_detections),
+            "vlm_fallback": vlm_fallback_metadata,
             "display_detection_count": len(display_detections),
         }
 
