@@ -1,3 +1,4 @@
+from datetime import date
 from app.models.htp_pdi import HtpPdiInteraction
 from app.models.htp_test import HtpTest
 from app.services.openai_service import generate_json_answer
@@ -192,10 +193,24 @@ def generate_htp_report(
 
     visual = htp_test.visual_features_json or {}
 
+    child = htp_test.child
+    child_context = {
+        "birth_year": child.birth_year if child else None,
+        "age_by_year": (
+            date.today().year - child.birth_year
+            if child
+            else None
+        ),
+        "gender": child.gender if child else None,
+    }
+
     prompt = f"""
 당신은 아동 심리 검사 전문가입니다. KHTP 검사 결과를 바탕으로 보호자용 리포트를 작성하세요.
 
-## 그림 분석 결과 (YOLO)
+## 아동 정보
+{child_context}
+
+## 그림 및 그리기 과정 분석 결과
 {visual}
 
 ## PDI 응답
@@ -205,9 +220,42 @@ def generate_htp_report(
 {rag_context}
 
 ## 작성 규칙
-- 단정적 진단 금지, 가능성/경향성 언어 사용
-- 보호자가 이해할 수 있는 언어로 작성
-- 반드시 아래 JSON 형식으로만 응답
+
+- 반드시 아래 JSON 형식으로만 응답할 것
+- 보호자가 이해하기 쉬운 언어로 작성할 것
+- 단정적인 진단을 금지하고 가능성·경향성·관찰 수준의 표현을 사용할 것
+
+### 관찰 결과와 참고자료 구분
+
+- 그림에 관한 관찰 사실은 반드시 '그림 및 그리기 과정 분석 결과'에 명시적으로 제공된 필드와 값만 사용할 것
+- 분석 결과에 제공되지 않은 특징의 존재·부재·형태를 추측하거나 언급하지 말 것
+- ground_line 등 특정 특징의 분석 필드가 제공되지 않은 경우 해당 특징의 존재·부재·형태를 언급하거나 해석하지 말 것
+- HTP 지식 참고자료는 분석 결과에 명시된 특징의 해석을 보조하는 용도로만 사용할 것
+- HTP 지식 참고자료에 등장한다는 이유만으로 해당 특징이 실제 그림에 존재한다고 가정하거나 관찰 사실처럼 작성하지 말 것
+- 원본 이미지를 직접 확인한 것처럼 분석 결과에 없는 내용을 만들어내지 말 것
+
+### 그리기 과정 데이터
+
+- drawing_process는 그림 전체의 과정 데이터이므로 house, tree, person 중 특정 요소나 부위의 특징으로 연결하지 말고 summary에 종합적으로 반영할 것
+- drawing_process.available=true이면 그리기 시간과 전체 공간 사용을 summary.one_line_summary에 관찰 수준으로 자연스럽게 반영할 것
+- drawing_process.available=false이면 그리기 시간, 좌표, 필압 등 그리기 과정에 관한 내용을 언급하지 말 것
+- drawing_process.pressure.available=true일 때만 필압을 언급할 것
+- drawing_process.pressure.available=true이면 실제 데이터로 확인되는 필압의 측정 여부와 그림 내부의 변화만 summary.one_line_summary에 관찰 수준으로 반영할 것
+- 브러시 굵기를 필압으로 해석하지 말 것
+- pressure.mean, min, max, stddev는 기기별 차이가 있는 원시 측정값이므로 평균값만으로 강함·중간·약함을 분류하지 말 것
+- 검증된 필압 분류값이 별도로 제공되지 않으면 필압은 측정되었다는 사실과 그림 내부에서 나타난 변화만 설명할 것
+- 검증된 시간 분류값이 제공되지 않으면 그리기 시간을 적절함·짧음·긺으로 임의 분류하지 말 것
+- 그리기 시간은 관찰 사실로만 표현하고 단독으로 심리 상태를 해석하지 말 것
+- 필압·좌표·시간만으로 아동의 심리 상태나 태도를 단정하거나 추론하지 말 것
+- 전체 과정 데이터를 특정 집·나무·사람 요소에서 발생한 특징으로 단정하지 말 것
+- 원시 수치를 나열하기보다 보호자가 이해할 수 있는 관찰 문장으로 설명할 것
+
+### 아동 정보와 발달단계
+
+- 아동 정보의 age_by_year와 gender를 발달단계 해석에 반영할 것
+- birth_year만으로 계산된 age_by_year는 정확한 만 나이가 아닌 연도 기준 나이임을 고려할 것
+- 제공된 나이와 맞지 않는 발달단계 설명을 적용하지 말 것
+- 성별만으로 성격이나 심리 상태를 단정하지 말 것
 
 ## 출력 형식
 {{
