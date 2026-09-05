@@ -1,8 +1,25 @@
+from datetime import date
 from app.core.config import CHROMA_HTP_COLLECTION
 from app.models.htp_pdi import HtpPdiInteraction
 from app.models.htp_test import HtpTest
 from app.services.chroma_service import search_documents
 
+def build_child_context_query(htp_test: HtpTest) -> str:
+    child = htp_test.child
+
+    if child is None:
+        return "KHTP 아동 정보 없음. 발달단계를 임의로 추정하지 말 것."
+
+    age_by_year = date.today().year - child.birth_year
+
+    return f"""
+KHTP 아동 발달단계 해석.
+출생 연도 {child.birth_year}.
+연도 기준 나이 {age_by_year}세.
+성별 {child.gender}.
+해당 연령의 그림 발달단계와 해석 주의사항.
+나이와 성별만으로 심리 상태를 단정하지 말 것.
+""".strip()
 
 def safe_get(data: dict | None, *keys, default=None):
     """중첩 dict에서 안전하게 값 꺼내기."""
@@ -123,6 +140,44 @@ PDI 없이 이미지 기반 관찰 중심 리포트 작성.
 
     return "\n".join(lines)
 
+def build_drawing_process_query(visual_features: dict) -> str:
+    process = visual_features.get("drawing_process", {})
+
+    if not process.get("available"):
+        return (
+            "KHTP 캔버스 과정 데이터 없음. "
+            "필압과 그리기 시간을 추측하거나 해석하지 말 것."
+        )
+
+    duration_seconds = safe_get(
+        process, "duration", "total_seconds", default=""
+    )
+    pressure_available = safe_get(
+        process, "pressure", "available", default=False
+    )
+    pressure_mean = safe_get(
+        process, "pressure", "mean", default=""
+    )
+    pressure_stddev = safe_get(
+        process, "pressure", "stddev", default=""
+    )
+    position_x = safe_get(
+        process, "spatial", "position", "x", default=""
+    )
+    position_y = safe_get(
+        process, "spatial", "position", "y", default=""
+    )
+
+    return f"""
+KHTP 그리기 과정 구조적 분석.
+전체 소요 시간 {duration_seconds}초.
+실측 필압 사용 가능 여부 {pressure_available}.
+평균 필압 {pressure_mean}.
+필압 표준편차 {pressure_stddev}.
+전체 좌표 기반 위치 {position_x} {position_y}.
+그림 위치, 필압, 선 강도, 소요 시간 해석.
+필압과 시간만으로 심리 상태를 단정하지 말 것.
+""".strip()
 
 def build_htp_rag_queries(
     htp_test: HtpTest,
@@ -132,12 +187,21 @@ def build_htp_rag_queries(
 
     queries = [
         "KHTP 사용 규칙 주의사항 단정 금지 전문 진단 대체 금지 PDI 생활 맥락 함께 고려",
+        build_child_context_query(htp_test),
         build_feature_query_for_house(visual_features),
         build_feature_query_for_tree(visual_features),
         build_feature_query_for_person(visual_features),
         build_feature_query_for_relationships(visual_features),
-        build_pdi_query(pdi_interactions),
     ]
+
+    drawing_process = visual_features.get("drawing_process", {})
+
+    if drawing_process.get("available"):
+        queries.append(
+            build_drawing_process_query(visual_features)
+        )
+
+    queries.append(build_pdi_query(pdi_interactions))
 
     return [query for query in queries if query.strip()]
 

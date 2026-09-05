@@ -20,6 +20,7 @@ from app.services.pdi_service import (
     skip_pdi as skip_pdi_service,
 )
 from app.services.yolo_service import analyze_htp_image_with_yolo
+from app.services.canvas_feature_service import extract_canvas_features
 
 router = APIRouter()
 
@@ -272,6 +273,19 @@ def analyze_test_image(
     HTP_RESULT_DIR.mkdir(parents=True, exist_ok=True)
 
     analysis_result = analyze_htp_image_with_yolo(htp_test.original_image_path)
+
+    visual_features = analysis_result["visual_features_json"]
+
+    canvas_drawing = htp_test.canvas_drawing
+
+    visual_features["drawing_process"] = extract_canvas_features(
+        canvas_drawing.drawing_data_json
+        if canvas_drawing
+        else None
+    )
+
+    analysis_result["visual_features_json"] = visual_features
+
     apply_image_analysis_result_to_test(
         htp_test=htp_test,
         analysis_result=analysis_result,
