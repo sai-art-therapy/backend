@@ -27,6 +27,7 @@ _PARENT_ALIASES = {
 # Values are canonical labels already understood by yolo_service.py. Aliases are
 # used only to decide whether YOLO has already found that canonical element.
 _DETAIL_ALIASES = {
+    "wall": {"wall", "집벽"},
     "roof": {"roof", "지붕"},
     "door": {"door", "문"},
     "window": {"window", "창문"},
@@ -37,6 +38,8 @@ _DETAIL_ALIASES = {
     "root": {"root", "뿌리"},
     "fruit": {"fruit", "열매"},
     "flower": {"flower", "꽃"},
+    "head": {"head", "머리"},
+    "face": {"face", "얼굴"},
     "eye": {"eye", "눈"},
     "nose": {"nose", "코"},
     "mouth": {"mouth", "입"},
@@ -54,9 +57,19 @@ _PARENT_DETAILS = {
 }
 
 _RECOVERABLE_MAIN_LABELS = ("house", "person")
+_RECOVERED_PARENT_DETAILS = {
+    "house": ("wall", "roof", "door", "window", "chimney"),
+    "person": (
+        "head", "face", "eye", "nose", "mouth", "arm", "hand", "leg",
+        "foot", "shoes",
+    ),
+}
 _DETAIL_PARENT = {
     detail: parent
-    for parent, details in _PARENT_DETAILS.items()
+    for parent, details in {
+        **_PARENT_DETAILS,
+        **_RECOVERED_PARENT_DETAILS,
+    }.items()
     for detail in details
 }
 
@@ -93,6 +106,16 @@ def _main_recovery_labels(detections: List[Dict[str, Any]]) -> List[str]:
         parent
         for parent in _RECOVERABLE_MAIN_LABELS
         if labels.isdisjoint(_PARENT_ALIASES[parent])
+    ]
+
+
+def _recovered_parent_detail_labels(
+    main_recovery_labels: List[str],
+) -> List[str]:
+    return [
+        detail
+        for parent in main_recovery_labels
+        for detail in _RECOVERED_PARENT_DETAILS[parent]
     ]
 
 
@@ -150,6 +173,7 @@ def _prompt(
     candidates: List[Dict[str, Any]],
     missing_labels: List[str],
     main_recovery_labels: List[str],
+    recovered_parent_detail_labels: List[str],
     shoe_recovery_requested: bool,
     width: int,
     height: int,
@@ -183,6 +207,12 @@ object present=true only when the complete house or person is clearly and direct
 visible, and return a bbox enclosing that whole object. Do not infer a main object from
 an isolated part, such as a shoe, hand, window, or line.
 
+Recovered-parent detail checks are conditional on the corresponding recovered main
+object being visibly present. If the main object is absent, return present=false for
+all of its requested details. If it is present, independently verify only details that
+are clearly visible inside or directly attached to that same main object. Do not infer
+details from what a house or person would normally contain.
+
 The following conservative rules apply only to requested missing labels, not to the
 low-confidence candidate verification above:
 - Set present=true only when the drawing contains clear, direct visual evidence of the
@@ -212,6 +242,12 @@ Missing labels to check because their parent object exists:
 
 Missing main objects to recover:
 {json.dumps(main_recovery_labels, ensure_ascii=False)}
+
+Details to verify only for those recovered main objects:
+{json.dumps([
+    {"label": label, "parent": _DETAIL_PARENT[label]}
+    for label in recovered_parent_detail_labels
+], ensure_ascii=False)}
 """
 
 
@@ -231,6 +267,7 @@ def _apply_response(
     candidates: List[Dict[str, Any]],
     missing_labels: List[str],
     main_recovery_labels: List[str],
+    recovered_parent_detail_labels: List[str],
     shoe_recovery_requested: bool,
     protected_labels: Set[str],
     payload: Any,
@@ -256,7 +293,11 @@ def _apply_response(
     if set(decisions) != expected_ids:
         raise ValueError("not every candidate was verified")
 
-    expected_labels = set(missing_labels) | set(main_recovery_labels)
+    expected_labels = (
+        set(missing_labels)
+        | set(main_recovery_labels)
+        | set(recovered_parent_detail_labels)
+    )
     proposed_additions: List[Dict[str, Any]] = []
     seen_labels = set()
     for item in missing:
@@ -300,7 +341,11 @@ def _apply_response(
     detail_additions = [
         item for item in proposed_additions
         if item["label"] not in main_recovery_labels
-        and _detail_addition_has_valid_parent(item, corrected)
+        and _detail_addition_has_valid_parent(
+            item,
+            corrected,
+            item["label"] in recovered_parent_detail_labels,
+        )
     ]
 
     additions = detail_additions
@@ -338,11 +383,15 @@ def _apply_response(
 
 
 def _detail_addition_has_valid_parent(
-    addition: Dict[str, Any], detections: List[Dict[str, Any]]
+    addition: Dict[str, Any],
+    detections: List[Dict[str, Any]],
+    skip_when_existing: bool = False,
 ) -> bool:
     from app.services.yolo_service import (
         _clean_label,
         _is_center_inside,
+        _is_shoe_spatially_consistent,
+        _passes_spatial_check,
         _pick_best_bbox,
     )
 
@@ -355,8 +404,26 @@ def _detail_addition_has_valid_parent(
     )
     if parent_bbox is None:
         return False
+    if skip_when_existing and any(
+        _clean_label(detection.get("label", "")) in _DETAIL_ALIASES[label]
+        and (
+            _is_shoe_spatially_consistent(
+                detection["bbox"], parent_bbox, detection["label"]
+            )
+            if label == "shoes"
+            else _passes_spatial_check(
+                detection["bbox"], parent_bbox, detection["label"]
+            )
+        )
+        for detection in detections
+    ):
+        return False
+    if label == "shoes":
+        return _is_shoe_spatially_consistent(
+            addition["bbox"], parent_bbox, "shoes"
+        )
     if label != "fruit":
-        return True
+        return _passes_spatial_check(addition["bbox"], parent_bbox, label)
 
     crown_candidates = [
         detection
@@ -432,6 +499,9 @@ def apply_vlm_fallback(
         spatially_relevant_detections, selected_parent_types
     )
     main_recovery_labels = _main_recovery_labels(all_detections)
+    recovered_parent_detail_labels = _recovered_parent_detail_labels(
+        main_recovery_labels
+    )
     spatial_shoe_indexes = {
         index
         for index in trigger_a_detection_indexes
@@ -451,7 +521,12 @@ def apply_vlm_fallback(
     )
     if shoe_recovery_requested and "shoes" not in missing_labels:
         missing_labels.append("shoes")
-    if not candidates and not missing_labels and not main_recovery_labels:
+    if (
+        not candidates
+        and not missing_labels
+        and not main_recovery_labels
+        and not recovered_parent_detail_labels
+    ):
         return all_detections, _metadata()
 
     try:
@@ -465,6 +540,7 @@ def apply_vlm_fallback(
                         candidates,
                         missing_labels,
                         main_recovery_labels,
+                        recovered_parent_detail_labels,
                         shoe_recovery_requested,
                         width,
                         height,
@@ -487,6 +563,7 @@ def apply_vlm_fallback(
             candidates,
             missing_labels,
             main_recovery_labels,
+            recovered_parent_detail_labels,
             shoe_recovery_requested,
             protected_labels,
             payload,
