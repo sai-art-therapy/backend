@@ -7,6 +7,9 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 OPENAI_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4.1-mini")
 OPENAI_EMBEDDING_MODEL = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+OPENAI_VLM_FALLBACK_ENABLED = os.getenv("OPENAI_VLM_FALLBACK_ENABLED", "false").lower() == "true"
+OPENAI_VLM_MODEL = os.getenv("OPENAI_VLM_MODEL", "gpt-5.6-luna")
+OPENAI_VLM_VERIFY_CONF_MAX = float(os.getenv("OPENAI_VLM_VERIFY_CONF_MAX", "0.60"))
 
 # ChromaDB 설정
 CHROMA_PATH = os.getenv("CHROMA_PATH", "./app/db/chroma")
