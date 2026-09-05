@@ -49,6 +49,9 @@ KHTP 집 그림 해석.
 집 위치 {position_x} {position_y}.
 문 탐지 여부 {door_detected}.
 창문 개수 {window_count}.
+지붕 탐지 여부 {safe_get(house, "parts", "roof", "detected")}.
+벽 탐지 여부 {safe_get(house, "parts", "wall", "detected")}.
+굴뚝 탐지 여부 {safe_get(house, "parts", "chimney", "detected")}.
 태그 {tags}.
 가족관계 생활환경 자기개방 대인접촉 해석 주의.
 """.strip()
@@ -72,6 +75,9 @@ KHTP 나무 그림 해석.
 기둥 탐지 여부 {trunk_detected}.
 수관 탐지 여부 {crown_detected}.
 뿌리 탐지 여부 {roots_detected}.
+가지 탐지 여부 {safe_get(tree, "parts", "branch", "detected")}.
+열매 개수 {safe_get(tree, "parts", "fruit", "count")}.
+꽃 개수 {safe_get(tree, "parts", "flower", "count")}.
 태그 {tags}.
 자기상 성장감 에너지 안정감 발달단계 해석 주의.
 """.strip()
@@ -97,19 +103,37 @@ KHTP 사람 그림 해석.
 얼굴 탐지 여부 {face_detected}.
 손 개수 {hand_count}.
 발 개수 {feet_count}.
+팔 개수 {safe_get(person, "parts", "arms", "count")}.
+다리 개수 {safe_get(person, "parts", "legs", "count")}.
+신발 탐지 여부 {safe_get(person, "parts", "shoes", "detected")}.
 태그 {tags}.
 자기개념 자기표상 대인관계 신체상 세부묘사 해석 주의.
 """.strip()
+
+
+def build_feature_query_for_composition(visual_features: dict) -> str:
+    # Retrieve structural evidence explicitly; object queries often retrieve only parts.
+    observed = {
+        name: {key: feature[key] for key in ("relative_size", "position") if key in feature}
+        for name in ("house", "tree", "person")
+        if (feature := visual_features.get(name, {})).get("detected") is True
+    }
+    if not any(observed.values()):
+        return ""
+    return (
+        f"KHTP 그림 크기 위치 구성 조합 해석. 실제 객체별 상대 크기와 위치 {observed}. "
+        "공간 사용 자기표현 해석 가능성. 관찰된 조합만 해석하고 성격을 확정하지 말 것."
+    )
 
 
 def build_feature_query_for_relationships(visual_features: dict) -> str:
     relationships = visual_features.get("relationships", {})
 
     return f"""
-KHTP 집 나무 사람 관계 해석.
-요소 간 거리 겹침 밀착 배치 관계.
+KHTP 밀착(enclosure) 개념과 심리적 의미. H-T H-P P-T 요소 간 거리와 독립적 성장.
+실제 물리적 접촉·겹침 여부와 단순한 가까운 배치를 구분. 밀착 없음도 함께 검토.
 관계 정보 {relationships}.
-가족환경 자기상 대인관계 요소 간 관계 분석.
+관찰된 관계에 맞는 해석만 참고하고 심리적 성숙이나 가족관계를 확정하지 말 것.
 """.strip()
 
 
@@ -124,8 +148,8 @@ def build_pdi_query(pdi_interactions: list[HtpPdiInteraction]) -> str:
         return """
 KHTP PDI 응답 없음.
 그림 특징만으로 단정하지 말 것.
-PDI 없이 이미지 기반 관찰 중심 리포트 작성.
-해석 한계와 추가 질문 권장.
+PDI 없이도 실제 시각 특징과 HTP 근거를 연결한 가능성 해석.
+크기 위치 구성 세부 요소 관계를 함께 고려.
 """.strip()
 
     lines = ["KHTP PDI 질문 답변 기반 해석."]
@@ -135,7 +159,7 @@ PDI 없이 이미지 기반 관찰 중심 리포트 작성.
             f"[{item.target_type}] 질문: {item.question_text} / 아이 답변: {item.answer_text}"
         )
 
-    lines.append("그림 특징과 PDI 응답을 함께 고려한 리포트 작성.")
+    lines.append("시각 특징 기반 HTP 해석을 PDI 답변으로 보완하거나 수정. 답변 요약으로 대체하지 않기.")
     lines.append("단정 금지, 가능성 언어 사용, 보호자 안내 중심.")
 
     return "\n".join(lines)
@@ -191,6 +215,7 @@ def build_htp_rag_queries(
         build_feature_query_for_house(visual_features),
         build_feature_query_for_tree(visual_features),
         build_feature_query_for_person(visual_features),
+        build_feature_query_for_composition(visual_features),
         build_feature_query_for_relationships(visual_features),
     ]
 
