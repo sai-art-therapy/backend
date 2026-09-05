@@ -29,9 +29,13 @@ def _has_positive_relation_claim(text: str, left: str, right: str, terms: tuple[
     return False
 
 
-def _assert_report_grounding(report_json: dict, visual: dict) -> None:
+def _assert_report_grounding(report_json: dict, visual: dict, age_by_year: int | None = None) -> None:
     """Reject reports containing directly checkable contradictions or invented states."""
     report_text = "\n".join(_iter_report_text(report_json))
+    if age_by_year is None:
+        for term in ("미취학", "학령기", "학령전", "영유아", "유아기", "청소년기"):
+            if term in report_text:
+                raise ValueError("report assumed a developmental stage without age data")
     door = visual.get("house", {}).get("parts", {}).get("door", {})
     if "state" not in door:
         unsupported_door_states = (
@@ -293,8 +297,26 @@ def generate_htp_report(
   자기인식이 잘 형성됨, 환경 인식이 명확함, 심리적으로 안정적임을 결론 내리지 말 것
 - PDI 응답이나 생활 맥락이 없으면 main_emotion은 '확인 어려움'으로 작성하고,
   positive_note는 실제로 확인된 그림 표현만 설명할 것
-- RAG 자료가 없으면 부위의 존재·부재를 심리적 상징으로 연결하지 말고,
-  interpretation에는 관찰의 한계와 아이에게 확인할 내용을 작성할 것
+- observations는 visual_features의 관찰 사실이며, interpretation은 실제 특징 → 관련 RAG 근거
+  → 가능성 해석 → PDI 보완 순서로 작성할 것
+- PDI가 없어도 관찰 특징 + 관련 RAG에 근거한 HTP 해석을 제공할 것. 집/나무/사람별로
+  크기·위치·세부 구성 중 근거가 있는 특징을 연결해 2~4문장으로 충분히 설명할 것
+- 심리·발달 해석은 실제 검색된 RAG의 의미와 적용 조건이 관찰값에 맞을 때만
+  '~일 수 있습니다', '~와 관련해 참고할 수 있습니다' 같은 가능성 언어로 작성할 것
+- 신체 부위 존재만으로 인지 능력·자기인식의 발달 정도를 추론하지 말고, 열매를 성취와 연결하는
+  직접적인 RAG 근거가 없으면 열매는 관찰만 기술할 것. 미탐지를 미완성·결핍·문제로 바꾸지 말 것
+- 열매·가지·꽃 등 개수 기반 특징은 검색된 RAG의 조건이 정확히 그 개수·유무를 지정할 때만 해당
+  의미를 연결할 것. RAG 조건이 다른 형태(가지 모양 등)에 관한 것이면 개수는 관찰로만 기술할 것
+- PDI는 아이의 설명으로 귀속하여 해석을 보완·수정하고, 답변 요약으로 대체하지 말 것.
+  답변에만 있는 내용으로 JSON의 관찰값을 덮어쓰지 말 것
+- RAG가 비었거나 관련 근거가 없으면 그 특징은 관찰 사실까지만 기술할 것.
+  근거 없는 상징을 추가하거나 문장 수를 채우기 위해 해석을 만들지 말 것
+- 일반적인 '그림만으로 단정하기 어렵다' 안내는 summary.disclaimer에 한 번만 두고,
+  각 interpretation·recommendations에서 반복하지 말 것. 특정 근거의 한계가 직접 영향을 줄 때만 짧게 설명할 것
+- '단정하기 어렵습니다', '확정하기 어렵습니다', '단독으로 확정하기 어렵습니다'처럼 특정 근거와
+  무관한 일반적 유보 표현은 리포트 전체에서 summary.disclaimer에만 쓰고 tabs와
+  relationship_analysis의 interpretation에는 쓰지 말 것. 근거가 부족하면 유보 문구 대신
+  무엇이 부족한지를 한 번만 구체적으로 짧게 쓸 것
 
 ### 관찰 결과와 참고자료 구분
 
@@ -304,6 +326,18 @@ def generate_htp_report(
 - HTP 지식 참고자료는 분석 결과에 명시된 특징의 해석을 보조하는 용도로만 사용할 것
 - HTP 지식 참고자료에 등장한다는 이유만으로 해당 특징이 실제 그림에 존재한다고 가정하거나 관찰 사실처럼 작성하지 말 것
 - 원본 이미지를 직접 확인한 것처럼 분석 결과에 없는 내용을 만들어내지 말 것
+- 객체 전체의 relative_size를 지붕·머리·줄기 같은 부위의 크기로 옮기지 말 것.
+  예를 들어 큰 집 + roof.detected=true는 '큰 지붕'의 근거가 아니며,
+  부위의 detected/count는 그 부위의 크기·강도·방향·완성도를 뜻하지 않음
+- '접촉/맞닿음/밀착/겹침'은 JSON의 실제 물리 관계를 설명할 때만 사용할 것.
+  HTP의 추상적 의미에는 '교류 관심/관계 지향/심리적 거리'처럼 물리 상태와 구분되는 표현을 사용할 것
+- relationships의 각 쌍은 distance_level이 서로 다를 수 있으므로 개별적으로 설명할 것.
+  distance_level이 제공하지 않는 '적절한/적당한' 같은 거리의 좋고 나쁨 평가를 추가하지 말 것
+- 여러 부위의 detected/count 조합을 '완성도', '균형', '조화로움' 같은 품질 평가로 확대하지 말 것.
+  그런 평가는 relative_size/position/detected/count가 직접 제공하지 않는 속성임
+- RAG에 문화적 배경 설명(예: 한국 도시·아파트 환경)이 있어도 이 아동의 실제 거주 형태·지역을
+  사실처럼 쓰지 말 것. 그런 설명은 '그래서 특정 부위 부재를 부정적으로 단정하기 어렵다'는
+  근거로만 사용하고, 아동이 그 환경에 있다고 단언하지 말 것
 
 ### 그리기 과정 데이터
 
@@ -327,6 +361,8 @@ def generate_htp_report(
 - birth_year만으로 계산된 age_by_year는 정확한 만 나이가 아닌 연도 기준 나이임을 고려할 것
 - 제공된 나이와 맞지 않는 발달단계 설명을 적용하지 말 것
 - 성별만으로 성격이나 심리 상태를 단정하지 말 것
+- age_by_year가 null이면 '미취학', '학령기', '영유아' 같은 발달단계 용어 자체를 쓰지 말 것.
+  뿌리 등 특정 부위 미탐지를 발달적 미분화로 연결하려면 age_by_year가 실제로 제공된 경우에만 쓸 것
 
 ## 출력 형식
 {{
@@ -381,17 +417,17 @@ def generate_htp_report(
 
 최종 출력 전 각 문장을 입력과 대조하세요. 위 참고자료보다 다음 근거 규칙이 우선합니다.
 - 객체마다 size/position 값이 다르므로 여러 객체가 모두 같은 크기·위치라고 요약하지 마세요.
-- summary.one_line_summary는 요소의 존재와 PDI 확인 여부를 중심으로 쓰고 객체 크기를 나열하지 마세요.
+- summary.one_line_summary는 실제 특징과 근거 있는 해석의 핵심을 요약하세요.
 - 미측정 필드는 unknown입니다. 정보가 없다는 이유로 부정적 신호가 없다고 결론 내리지 마세요.
-- positive_note는 '어떤 부위가 표현되었다' 수준의 관찰만 쓰세요. 인지·신체 인식·자기표상이
-  형성되었다거나 능력을 갖추었다는 추론은 쓰지 마세요.
-- PDI나 생활 맥락이 없는 경우 아동 개인의 심리·발달 상태를 그림 부위에 연결하지 마세요.
-  RAG의 일반 상징은 이 아동에 대한 사실이 아닙니다. 확인할 질문과 해석의 한계를 쓰세요.
+- positive_note는 확인된 표현만 설명하고 인지 능력·자기인식 형성으로 확대하지 마세요.
+- PDI 유무와 관계없이 관련 RAG가 뒷받침하는 가능성 해석은 충분히 제공하세요.
+  RAG의 일반 상징을 아이의 사실로 확정하거나, 근거 없는 해석을 추가하지 마세요.
 - age_by_year가 null이면 미취학/학령기 등 특정 발달단계를 이 아동의 특징에 적용하지 마세요.
+- 객체 전체의 크기를 부위 크기로 옮기지 말고, 미탐지는 미탐지로 표현하세요.
 - 문 탐지는 열림·닫힘이 아닙니다. touching=false, overlap=false와 모순되는 문장을 쓰지 마세요.
 """
     report_json = generate_json_answer(prompt)
-    _assert_report_grounding(report_json, visual)
+    _assert_report_grounding(report_json, visual, child_context["age_by_year"])
 
     report_json["pdi"] = {
         "status": htp_test.pdi_status,
