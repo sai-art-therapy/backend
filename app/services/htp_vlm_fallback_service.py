@@ -32,6 +32,7 @@ _DETAIL_ALIASES = {
     "window": {"window", "창문"},
     "chimney": {"chimney", "굴뚝"},
     "trunk": {"trunk", "줄기", "나무줄기"},
+    "crown": {"crown", "수관"},
     "branch": {"branch", "가지"},
     "root": {"root", "뿌리"},
     "fruit": {"fruit", "열매"},
@@ -50,6 +51,13 @@ _PARENT_DETAILS = {
     "house": ("roof", "door", "window", "chimney"),
     "tree": ("trunk", "branch", "root", "fruit", "flower"),
     "person": ("eye", "nose", "mouth", "arm", "hand", "leg", "foot", "shoes"),
+}
+
+_RECOVERABLE_MAIN_LABELS = ("house", "person")
+_DETAIL_PARENT = {
+    detail: parent
+    for parent, details in _PARENT_DETAILS.items()
+    for detail in details
 }
 
 
@@ -77,6 +85,15 @@ def _missing_labels(
             if labels.isdisjoint(_DETAIL_ALIASES[canonical]):
                 requested.append(canonical)
     return requested
+
+
+def _main_recovery_labels(detections: List[Dict[str, Any]]) -> List[str]:
+    labels = {str(item.get("label", "")).lower().strip() for item in detections}
+    return [
+        parent
+        for parent in _RECOVERABLE_MAIN_LABELS
+        if labels.isdisjoint(_PARENT_ALIASES[parent])
+    ]
 
 
 def _encode_image(image_path: Path) -> Tuple[str, int, int]:
@@ -132,6 +149,7 @@ def _response_schema() -> Dict[str, Any]:
 def _prompt(
     candidates: List[Dict[str, Any]],
     missing_labels: List[str],
+    main_recovery_labels: List[str],
     shoe_recovery_requested: bool,
     width: int,
     height: int,
@@ -155,9 +173,15 @@ coordinates [x1, y1, x2, y2], with origin at the top-left. Coordinates must sati
 0 <= x1 < x2 <= {width} and 0 <= y1 < y2 <= {height}.
 
 For every low-confidence candidate, return its candidate_id and whether that exact
-labeled element is visibly present near the supplied bbox. For every requested missing
-label, return the label and whether it is visibly present. If present, return its tight
-pixel bbox; if absent, return null for bbox. Do not add labels that were not requested.
+labeled element is visibly present near the supplied bbox. For every requested main
+object or missing detail label, return the label and whether it is visibly present. If
+present, return its tight pixel bbox; if absent, return null for bbox. Do not add labels
+that were not requested.
+
+Requested main-object recovery labels are conservative whole-object checks. Set a main
+object present=true only when the complete house or person is clearly and directly
+visible, and return a bbox enclosing that whole object. Do not infer a main object from
+an isolated part, such as a shoe, hand, window, or line.
 
 The following conservative rules apply only to requested missing labels, not to the
 low-confidence candidate verification above:
@@ -171,6 +195,9 @@ low-confidence candidate verification above:
   nearby unrelated lines are not roots.
 - For shoes: set present=true only when a shoe outline visibly distinct from the foot
   or leg is drawn. Do not infer shoes from the presence or shape of a foot alone.
+- For fruit: set present=true only for a clearly drawn fruit-like object located in the
+  tree or crown. A single ambiguous dot, decoration, eye-like circle, or unrelated small
+  round mark is not fruit. If its identity as fruit is uncertain, set present=false.
 {'''- Shoes is also requested as a conditional replacement. Verify each existing shoe
   candidate independently and do not keep a wrong candidate. In the missing result for
   shoes, return present=true with a new tight bbox only if all supplied shoe candidates
@@ -182,6 +209,9 @@ Low-confidence candidates:
 
 Missing labels to check because their parent object exists:
 {json.dumps(missing_labels, ensure_ascii=False)}
+
+Missing main objects to recover:
+{json.dumps(main_recovery_labels, ensure_ascii=False)}
 """
 
 
@@ -200,6 +230,7 @@ def _apply_response(
     original: List[Dict[str, Any]],
     candidates: List[Dict[str, Any]],
     missing_labels: List[str],
+    main_recovery_labels: List[str],
     shoe_recovery_requested: bool,
     protected_labels: Set[str],
     payload: Any,
@@ -225,7 +256,7 @@ def _apply_response(
     if set(decisions) != expected_ids:
         raise ValueError("not every candidate was verified")
 
-    expected_labels = set(missing_labels)
+    expected_labels = set(missing_labels) | set(main_recovery_labels)
     proposed_additions: List[Dict[str, Any]] = []
     seen_labels = set()
     for item in missing:
@@ -236,6 +267,7 @@ def _apply_response(
             raise ValueError("unknown or duplicate missing label")
         seen_labels.add(label)
         if item["present"]:
+            is_main_recovery = label in main_recovery_labels
             proposed_additions.append({
                 "label": label,
                 "display_label": label,
@@ -244,7 +276,7 @@ def _apply_response(
                 "confidence": 0.5,
                 "source": "openai_vlm",
                 "bbox": _validate_bbox(item.get("bbox"), width, height),
-                "use_for_display": False,
+                "use_for_display": is_main_recovery,
                 "use_for_analysis": True,
             })
         elif item.get("bbox") is not None:
@@ -261,7 +293,17 @@ def _apply_response(
     }
     corrected = [item for index, item in enumerate(original) if index not in rejected_indexes]
 
-    additions = proposed_additions
+    main_additions = [
+        item for item in proposed_additions if item["label"] in main_recovery_labels
+    ]
+    corrected.extend(main_additions)
+    detail_additions = [
+        item for item in proposed_additions
+        if item["label"] not in main_recovery_labels
+        and _detail_addition_has_valid_parent(item, corrected)
+    ]
+
+    additions = detail_additions
     if shoe_recovery_requested:
         shoe_candidate_ids = {
             item["candidate_id"]
@@ -273,10 +315,10 @@ def _apply_response(
             not decisions[candidate_id] for candidate_id in shoe_candidate_ids
         )
         shoe_additions = [
-            item for item in proposed_additions if item["label"] == "shoes"
+            item for item in detail_additions if item["label"] == "shoes"
         ]
         additions = [
-            item for item in proposed_additions if item["label"] != "shoes"
+            item for item in detail_additions if item["label"] != "shoes"
         ]
         if (
             all_shoe_candidates_rejected
@@ -291,29 +333,67 @@ def _apply_response(
         triggered=True,
         verified_count=len(candidates),
         removed_count=len(rejected_indexes),
-        added_count=len(additions),
+        added_count=len(main_additions) + len(additions),
     )
+
+
+def _detail_addition_has_valid_parent(
+    addition: Dict[str, Any], detections: List[Dict[str, Any]]
+) -> bool:
+    from app.services.yolo_service import (
+        _clean_label,
+        _is_center_inside,
+        _pick_best_bbox,
+    )
+
+    label = addition["label"]
+    parent = _DETAIL_PARENT.get(label)
+    if parent is None:
+        return False
+    parent_bbox = _pick_best_bbox(
+        detections, parent, allow_subobject_fallback=False
+    )
+    if parent_bbox is None:
+        return False
+    if label != "fruit":
+        return True
+
+    crown_candidates = [
+        detection
+        for detection in detections
+        if _clean_label(detection.get("label", "")) in _DETAIL_ALIASES["crown"]
+    ]
+    fruit_parent_bbox = (
+        max(crown_candidates, key=lambda item: item["confidence"])["bbox"]
+        if crown_candidates
+        else parent_bbox
+    )
+    return _is_center_inside(addition["bbox"], fruit_parent_bbox)
 
 
 def _has_spatial_shoe_evidence(detections: List[Dict[str, Any]]) -> bool:
-    from app.services.yolo_service import _passes_spatial_check, _pick_best_bbox
+    from app.services.yolo_service import _has_shoes_spatial, _pick_best_bbox
 
-    person_bbox = _pick_best_bbox(detections, "person")
-    return any(
-        str(detection.get("label", "")).lower().strip()
-        in _DETAIL_ALIASES["shoes"]
-        and _passes_spatial_check(detection.get("bbox"), person_bbox, detection["label"])
-        for detection in detections
+    person_bbox = _pick_best_bbox(
+        detections, "person", allow_subobject_fallback=False
     )
+    return _has_shoes_spatial(detections, person_bbox)
 
 
 def _shoe_replacement_passes_spatial(
     replacement: Dict[str, Any], detections: List[Dict[str, Any]]
 ) -> bool:
-    from app.services.yolo_service import _passes_spatial_check, _pick_best_bbox
+    from app.services.yolo_service import (
+        _is_shoe_spatially_consistent,
+        _pick_best_bbox,
+    )
 
-    person_bbox = _pick_best_bbox(detections, "person")
-    return _passes_spatial_check(replacement["bbox"], person_bbox, "shoes")
+    person_bbox = _pick_best_bbox(
+        detections, "person", allow_subobject_fallback=False
+    )
+    return _is_shoe_spatially_consistent(
+        replacement["bbox"], person_bbox, "shoes"
+    )
 
 
 def apply_vlm_fallback(
@@ -351,6 +431,7 @@ def apply_vlm_fallback(
     missing_labels = _missing_labels(
         spatially_relevant_detections, selected_parent_types
     )
+    main_recovery_labels = _main_recovery_labels(all_detections)
     spatial_shoe_indexes = {
         index
         for index in trigger_a_detection_indexes
@@ -370,7 +451,7 @@ def apply_vlm_fallback(
     )
     if shoe_recovery_requested and "shoes" not in missing_labels:
         missing_labels.append("shoes")
-    if not candidates and not missing_labels:
+    if not candidates and not missing_labels and not main_recovery_labels:
         return all_detections, _metadata()
 
     try:
@@ -383,6 +464,7 @@ def apply_vlm_fallback(
                     {"type": "input_text", "text": _prompt(
                         candidates,
                         missing_labels,
+                        main_recovery_labels,
                         shoe_recovery_requested,
                         width,
                         height,
@@ -404,6 +486,7 @@ def apply_vlm_fallback(
             all_detections,
             candidates,
             missing_labels,
+            main_recovery_labels,
             shoe_recovery_requested,
             protected_labels,
             payload,
