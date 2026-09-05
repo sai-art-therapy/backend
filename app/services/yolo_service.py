@@ -550,7 +550,10 @@ def _create_display_detections(
     for detection in all_detections:
         raw_label = detection["label"]
 
-        if not _should_display(raw_label):
+        if (
+            not detection.get("use_for_display", _should_display(raw_label))
+            or not _should_display(raw_label)
+        ):
             continue
 
         normalized_type = _normalize_label(raw_label)
@@ -586,6 +589,7 @@ def _pick_best_bbox(
     # 1순위: main object label 후보
     main_candidates = [
         d for d in detections
+        if d.get("use_for_analysis", True)
         if _clean_label(d["label"]) in main_labels
     ]
     if main_candidates:
@@ -597,6 +601,7 @@ def _pick_best_bbox(
     # 2순위: normalize 기준 같은 타입의 sub-object (fallback)
     sub_candidates = [
         d for d in detections
+        if d.get("use_for_analysis", True)
         if _normalize_label(d["label"]) == target_type
     ]
     if sub_candidates:
@@ -612,6 +617,7 @@ def _count_parts(
     label_set = {_clean_label(label) for label in labels}
     return sum(
         1 for detection in detections
+        if detection.get("use_for_analysis", True)
         if _clean_label(detection["label"]) in label_set
     )
 
@@ -695,6 +701,7 @@ def _has_shoes_spatial(
     shoe_labels = {"male_shoes", "female_shoes", "sneakers", "shoes"}
     return any(
         _clean_label(detection["label"]) in shoe_labels
+        and detection.get("use_for_analysis", True)
         and _is_shoe_spatially_consistent(
             detection["bbox"], person_bbox, detection["label"]
         )
@@ -711,6 +718,7 @@ def _count_parts_spatial(
     label_set = {_clean_label(label) for label in labels}
     return sum(
         1 for d in detections
+        if d.get("use_for_analysis", True)
         if _clean_label(d["label"]) in label_set
         and _passes_spatial_check(d["bbox"], main_bbox, d["label"])
     )
@@ -725,6 +733,7 @@ def _count_parts_spatial_any_parent(
     label_set = {_clean_label(label) for label in labels}
     return sum(
         1 for detection in detections
+        if detection.get("use_for_analysis", True)
         if _clean_label(detection["label"]) in label_set
         and any(
             _passes_spatial_check(
@@ -813,14 +822,19 @@ def _create_visual_features_from_yolo(
     house_bbox = _pick_best_bbox(
         detections, "house", allow_subobject_fallback=False
     )
-    tree_bbox = _pick_best_bbox(detections, "tree")
+    tree_bbox = _pick_best_bbox(
+        detections, "tree", allow_subobject_fallback=False
+    )
     person_bbox = _pick_best_bbox(
         detections, "person", allow_subobject_fallback=False
     )
     tree_bboxes = [
         detection["bbox"]
         for detection in detections
-        if detection.get("use_for_analysis", True)
+        if detection.get(
+            "use_for_tree_aggregation",
+            detection.get("use_for_analysis", True),
+        )
         and _clean_label(detection["label"]) in MAIN_OBJECT_LABELS["tree"]
     ]
 

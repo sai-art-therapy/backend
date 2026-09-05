@@ -1,8 +1,69 @@
 from datetime import date
+import re
 from app.models.htp_pdi import HtpPdiInteraction
 from app.models.htp_test import HtpTest
 from app.services.openai_service import generate_json_answer
 from app.services.htp_rag_service import search_htp_knowledge_for_report
+
+
+def _iter_report_text(value):
+    if isinstance(value, str):
+        yield value
+    elif isinstance(value, dict):
+        for item in value.values():
+            yield from _iter_report_text(item)
+    elif isinstance(value, list):
+        for item in value:
+            yield from _iter_report_text(item)
+
+
+def _has_positive_relation_claim(text: str, left: str, right: str, terms: tuple[str, ...]) -> bool:
+    for sentence in text.replace("\n", ".").split("."):
+        if left not in sentence or right not in sentence:
+            continue
+        if not any(term in sentence for term in terms):
+            continue
+        if any(negative in sentence for negative in ("않", "아니", "없", "떨어", "분리")):
+            continue
+        return True
+    return False
+
+
+def _assert_report_grounding(report_json: dict, visual: dict) -> None:
+    """Reject reports containing directly checkable contradictions or invented states."""
+    report_text = "\n".join(_iter_report_text(report_json))
+    door = visual.get("house", {}).get("parts", {}).get("door", {})
+    if "state" not in door:
+        unsupported_door_states = (
+            "열린 문", "닫힌 문", "문이 열", "문은 열", "문이 닫", "문은 닫",
+            "개방된 문", "문이 개방", "open door", "door is open", "closed door",
+        )
+        for term in unsupported_door_states:
+            for match in re.finditer(re.escape(term), report_text.lower()):
+                clause = re.split(r"[.!?\n]|지만", report_text[match.start():], maxsplit=1)[0]
+                # An explicit unknown statement does not assert an open/closed door.
+                if re.search(r"(?:는지|여부|인지).*?(?:알 수 없|확인할 수 없|확인되지 않|정보가 없|정보는 없|정보가 제공되지 않)", clause):
+                    continue
+                raise ValueError("report invented an unsupported door state")
+
+    relation_names = {
+        "house_tree": ("집", "나무"),
+        "house_person": ("집", "사람"),
+        "tree_person": ("나무", "사람"),
+    }
+    # Contradictions can also appear in summary, tabs, or recommendations.
+    relation_text = report_text
+    relationships = visual.get("relationships", {})
+    for key, (left, right) in relation_names.items():
+        relation = relationships.get(key, {})
+        if relation.get("touching") is False and _has_positive_relation_claim(
+            relation_text, left, right, ("접촉", "맞닿", "밀착", "붙어")
+        ):
+            raise ValueError(f"report contradicted {key}.touching=false")
+        if relation.get("overlap") is False and _has_positive_relation_claim(
+            relation_text, left, right, ("겹쳐", "겹침", "중첩")
+        ):
+            raise ValueError(f"report contradicted {key}.overlap=false")
 
 
 def build_pdi_evidence(pdi_interactions: list[HtpPdiInteraction]) -> list[dict]:
@@ -224,6 +285,16 @@ def generate_htp_report(
 - 반드시 아래 JSON 형식으로만 응답할 것
 - 보호자가 이해하기 쉬운 언어로 작성할 것
 - 단정적인 진단을 금지하고 가능성·경향성·관찰 수준의 표현을 사용할 것
+- detected는 해당 요소의 존재만 뜻하며, 열림/닫힘·방향·표정·접촉 상태를 뜻하지 않음
+- 문이 detected=true여도 open/closed 필드가 없으면 문이 열렸거나 닫혔다고 쓰지 말 것
+- relationships의 touching/overlap이 false이면 접촉·맞닿음·밀착·겹침이 있다고 쓰지 말 것
+- 단일 visual feature만으로 심리 상태나 공간 상태를 사실처럼 단정하지 말 것
+- summary와 positive_note에도 같은 근거 규칙을 적용할 것. 신체 부위의 존재나 배치만으로
+  자기인식이 잘 형성됨, 환경 인식이 명확함, 심리적으로 안정적임을 결론 내리지 말 것
+- PDI 응답이나 생활 맥락이 없으면 main_emotion은 '확인 어려움'으로 작성하고,
+  positive_note는 실제로 확인된 그림 표현만 설명할 것
+- RAG 자료가 없으면 부위의 존재·부재를 심리적 상징으로 연결하지 말고,
+  interpretation에는 관찰의 한계와 아이에게 확인할 내용을 작성할 것
 
 ### 관찰 결과와 참고자료 구분
 
@@ -306,7 +377,21 @@ def generate_htp_report(
 }}
 """.strip()
 
+    prompt += """
+
+최종 출력 전 각 문장을 입력과 대조하세요. 위 참고자료보다 다음 근거 규칙이 우선합니다.
+- 객체마다 size/position 값이 다르므로 여러 객체가 모두 같은 크기·위치라고 요약하지 마세요.
+- summary.one_line_summary는 요소의 존재와 PDI 확인 여부를 중심으로 쓰고 객체 크기를 나열하지 마세요.
+- 미측정 필드는 unknown입니다. 정보가 없다는 이유로 부정적 신호가 없다고 결론 내리지 마세요.
+- positive_note는 '어떤 부위가 표현되었다' 수준의 관찰만 쓰세요. 인지·신체 인식·자기표상이
+  형성되었다거나 능력을 갖추었다는 추론은 쓰지 마세요.
+- PDI나 생활 맥락이 없는 경우 아동 개인의 심리·발달 상태를 그림 부위에 연결하지 마세요.
+  RAG의 일반 상징은 이 아동에 대한 사실이 아닙니다. 확인할 질문과 해석의 한계를 쓰세요.
+- age_by_year가 null이면 미취학/학령기 등 특정 발달단계를 이 아동의 특징에 적용하지 마세요.
+- 문 탐지는 열림·닫힘이 아닙니다. touching=false, overlap=false와 모순되는 문장을 쓰지 마세요.
+"""
     report_json = generate_json_answer(prompt)
+    _assert_report_grounding(report_json, visual)
 
     report_json["pdi"] = {
         "status": htp_test.pdi_status,

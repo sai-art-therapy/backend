@@ -41,6 +41,21 @@ class _FakeClient:
 
 
 class HtpVlmMainRecoveryTests(unittest.TestCase):
+    @staticmethod
+    def _absent_missing_payload(detections, selected_parent_types, include_tree_replacement):
+        missing_labels = vlm._missing_labels(detections, selected_parent_types)
+        absent_main_labels = vlm._main_recovery_labels(detections)
+        main_labels = list(absent_main_labels)
+        if include_tree_replacement and "tree" not in main_labels:
+            main_labels.append("tree")
+        recovered_labels = vlm._recovered_parent_detail_labels(absent_main_labels)
+        return [
+            {"label": label, "present": False, "bbox": None}
+            for label in dict.fromkeys(
+                missing_labels + main_labels + recovered_labels
+            )
+        ]
+
     def test_missing_main_alone_triggers_one_vlm_call(self):
         with tempfile.TemporaryDirectory() as directory:
             image_path = Path(directory) / "main-only-trigger.png"
@@ -55,10 +70,11 @@ class HtpVlmMainRecoveryTests(unittest.TestCase):
                 "verified": [],
                 "missing": [
                     {"label": "house", "present": False, "bbox": None},
+                    {"label": "tree", "present": False, "bbox": None},
                     {"label": "person", "present": False, "bbox": None},
                 ] + [
                     {"label": label, "present": False, "bbox": None}
-                    for parent in ("house", "person")
+                    for parent in ("house", "tree", "person")
                     for label in vlm._RECOVERED_PARENT_DETAILS[parent]
                 ],
             })
@@ -130,12 +146,16 @@ class HtpVlmMainRecoveryTests(unittest.TestCase):
                 _detection("head", 0.8, {"x1": 130, "y1": 25, "x2": 175, "y2": 70}),
             ]
             payload = {
-                "verified": [{"candidate_id": 0, "present": False}],
+                "verified": [
+                    {"candidate_id": 0, "present": False},
+                    {"candidate_id": 1, "present": True},
+                ],
                 "missing": [
                     {"label": "root", "present": False, "bbox": None},
                     # A positive fruit proposal outside the crown is still rejected.
                     {"label": "fruit", "present": True, "bbox": [120, 30, 135, 45]},
                     {"label": "flower", "present": False, "bbox": None},
+                    {"label": "tree", "present": False, "bbox": None},
                     {"label": "house", "present": True, "bbox": [10, 10, 100, 120]},
                     {"label": "person", "present": True, "bbox": [110, 20, 200, 210]},
                     {"label": "wall", "present": True, "bbox": [20, 40, 90, 115]},
@@ -173,6 +193,7 @@ class HtpVlmMainRecoveryTests(unittest.TestCase):
 
             self.assertEqual(len(fake_client.calls), 1)
             self.assertIsNone(metadata["error"])
+            self.assertEqual(metadata["verified_count"], 2)
             self.assertEqual(metadata["removed_count"], 1)
             self.assertEqual(metadata["added_count"], 10)
             labels = [item["label"] for item in corrected]
@@ -269,6 +290,162 @@ class HtpVlmMainRecoveryTests(unittest.TestCase):
             {"tree"},
         )
         self.assertNotIn("branch", missing)
+
+    def test_tree_candidates_are_individually_validated_and_false_boxes_removed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            image_path = Path(directory) / "tree-main-validation.png"
+            Image.new("RGB", (1200, 1200), "white").save(image_path)
+            true_tree_bbox = {"x1": 797, "y1": 119, "x2": 1138, "y2": 625}
+            detections = [
+                _detection("house", 0.9, {"x1": 20, "y1": 50, "x2": 600, "y2": 600}),
+                _detection("person", 0.9, {"x1": 220, "y1": 625, "x2": 459, "y2": 904}),
+                _detection("tree", 0.9609, true_tree_bbox),
+                _detection("tree", 0.708, {"x1": 239, "y1": 621, "x2": 464, "y2": 908}),
+                _detection("tree", 0.443, {"x1": 17, "y1": 0, "x2": 1144, "y2": 1184}),
+                _detection("tree", 0.303, {"x1": 309, "y1": 702, "x2": 462, "y2": 905}),
+            ]
+            relevant, parents = yolo._get_vlm_relevant_detection_indexes(detections)
+            payload = {
+                "verified": [
+                    {"candidate_id": 0, "present": True},
+                    {"candidate_id": 1, "present": False},
+                    {"candidate_id": 2, "present": False},
+                    {"candidate_id": 3, "present": False},
+                ],
+                "missing": self._absent_missing_payload(
+                    detections, parents, include_tree_replacement=True
+                ),
+            }
+            fake_client = _FakeClient(payload)
+            with (
+                patch.object(vlm, "OPENAI_VLM_FALLBACK_ENABLED", True),
+                patch.object(vlm, "client", fake_client),
+            ):
+                corrected, metadata = vlm.apply_vlm_fallback(
+                    str(image_path), detections,
+                    set().union(*yolo.MAIN_OBJECT_LABELS.values()),
+                    relevant, parents,
+                )
+
+            remaining_trees = [
+                item for item in corrected
+                if item["label"] == "tree" and item.get("use_for_analysis", True)
+            ]
+            aggregation_only_trees = [
+                item for item in corrected
+                if item.get("use_for_tree_aggregation")
+                and not item.get("use_for_analysis", True)
+            ]
+            display_trees = [
+                item for item in yolo._create_display_detections(corrected)
+                if item["type"] == "tree"
+            ]
+
+        self.assertEqual(len(fake_client.calls), 1)
+        self.assertEqual(metadata["verified_count"], 4)
+        self.assertEqual(metadata["removed_count"], 3)
+        self.assertEqual([item["bbox"] for item in remaining_trees], [true_tree_bbox])
+        self.assertEqual(len(aggregation_only_trees), 3)
+        self.assertEqual([item["bbox"] for item in display_trees], [true_tree_bbox])
+        self.assertEqual(
+            yolo._pick_best_bbox(corrected, "tree", allow_subobject_fallback=False),
+            true_tree_bbox,
+        )
+
+    def test_tree_is_recovered_with_details_in_the_same_single_call(self):
+        with tempfile.TemporaryDirectory() as directory:
+            image_path = Path(directory) / "tree-main-recovery.png"
+            Image.new("RGB", (500, 400), "white").save(image_path)
+            detections = [
+                _detection("house", 0.9, {"x1": 10, "y1": 20, "x2": 180, "y2": 250}),
+                _detection("person", 0.9, {"x1": 190, "y1": 100, "x2": 280, "y2": 350}),
+            ]
+            relevant, parents = yolo._get_vlm_relevant_detection_indexes(detections)
+            missing = self._absent_missing_payload(
+                detections, parents, include_tree_replacement=False
+            )
+            for item in missing:
+                if item["label"] == "tree":
+                    item.update(present=True, bbox=[300, 20, 480, 380])
+                elif item["label"] == "trunk":
+                    item.update(present=True, bbox=[370, 180, 410, 370])
+            fake_client = _FakeClient({"verified": [], "missing": missing})
+            with (
+                patch.object(vlm, "OPENAI_VLM_FALLBACK_ENABLED", True),
+                patch.object(vlm, "client", fake_client),
+            ):
+                corrected, metadata = vlm.apply_vlm_fallback(
+                    str(image_path), detections,
+                    set().union(*yolo.MAIN_OBJECT_LABELS.values()),
+                    relevant, parents,
+                )
+            features = yolo._create_visual_features_from_yolo(
+                str(image_path), corrected
+            )
+
+        self.assertEqual(len(fake_client.calls), 1)
+        self.assertIsNone(metadata["error"])
+        self.assertTrue(features["tree"]["detected"])
+        self.assertTrue(features["tree"]["parts"]["trunk"]["detected"])
+        self.assertEqual(
+            len([item for item in corrected if item.get("source") == "openai_vlm"]),
+            2,
+        )
+
+    def test_countable_details_add_only_distinct_spatial_instances(self):
+        with tempfile.TemporaryDirectory() as directory:
+            image_path = Path(directory) / "countable-details.png"
+            Image.new("RGB", (900, 900), "white").save(image_path)
+            detections = [
+                _detection("house", 0.9, {"x1": 0, "y1": 0, "x2": 300, "y2": 300}),
+                _detection("window", 0.8, {"x1": 50, "y1": 80, "x2": 90, "y2": 120}),
+                _detection("tree", 0.9, {"x1": 400, "y1": 0, "x2": 800, "y2": 400}),
+                _detection("crown", 0.8, {"x1": 420, "y1": 20, "x2": 780, "y2": 250}),
+                _detection("fruit", 0.8, {"x1": 450, "y1": 50, "x2": 480, "y2": 80}),
+                _detection("fruit", 0.8, {"x1": 550, "y1": 50, "x2": 580, "y2": 80}),
+                _detection("person", 0.9, {"x1": 0, "y1": 400, "x2": 400, "y2": 900}),
+                _detection("arm", 0.8, {"x1": 50, "y1": 500, "x2": 100, "y2": 650}),
+                _detection("leg", 0.8, {"x1": 100, "y1": 680, "x2": 160, "y2": 850}),
+            ]
+            relevant, parents = yolo._get_vlm_relevant_detection_indexes(detections)
+            missing = self._absent_missing_payload(
+                detections, parents, include_tree_replacement=True
+            )
+            additions = {
+                "window": [[52, 82, 88, 118], [150, 80, 190, 120]],
+                "fruit": [[452, 52, 478, 78], [650, 50, 680, 80]],
+                "arm": [[52, 502, 98, 648], [300, 500, 350, 650]],
+                "leg": [[102, 682, 158, 848], [250, 680, 310, 850]],
+            }
+            missing = [item for item in missing if item["label"] not in additions]
+            for label, boxes in additions.items():
+                missing.extend(
+                    {"label": label, "present": True, "bbox": bbox}
+                    for bbox in boxes
+                )
+            missing.append({"label": "fruit", "present": False, "bbox": None})
+            fake_client = _FakeClient({
+                "verified": [{"candidate_id": 0, "present": True}],
+                "missing": missing,
+            })
+            with (
+                patch.object(vlm, "OPENAI_VLM_FALLBACK_ENABLED", True),
+                patch.object(vlm, "client", fake_client),
+            ):
+                corrected, metadata = vlm.apply_vlm_fallback(
+                    str(image_path), detections,
+                    set().union(*yolo.MAIN_OBJECT_LABELS.values()),
+                    relevant, parents,
+                )
+            features = yolo._create_visual_features_from_yolo(
+                str(image_path), corrected
+            )
+
+        self.assertIsNone(metadata["error"])
+        self.assertEqual(features["house"]["parts"]["window"]["count"], 2)
+        self.assertEqual(features["tree"]["parts"]["fruit"]["count"], 3)
+        self.assertEqual(features["person"]["parts"]["arms"]["count"], 2)
+        self.assertEqual(features["person"]["parts"]["legs"]["count"], 2)
 
 
 if __name__ == "__main__":
