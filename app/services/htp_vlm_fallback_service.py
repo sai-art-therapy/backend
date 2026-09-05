@@ -56,13 +56,18 @@ _PARENT_DETAILS = {
     "person": ("eye", "nose", "mouth", "arm", "hand", "leg", "foot", "shoes"),
 }
 
-_RECOVERABLE_MAIN_LABELS = ("house", "person")
+_RECOVERABLE_MAIN_LABELS = ("house", "tree", "person")
 _RECOVERED_PARENT_DETAILS = {
     "house": ("wall", "roof", "door", "window", "chimney"),
+    # Branch remains intentionally excluded: VLM Trigger B must not create it.
+    "tree": ("trunk", "crown", "root", "fruit", "flower"),
     "person": (
         "head", "face", "eye", "nose", "mouth", "arm", "hand", "leg",
         "foot", "shoes",
     ),
+}
+_COUNTABLE_DETAIL_LABELS = {
+    "window", "fruit", "flower", "arm", "hand", "leg", "foot",
 }
 _DETAIL_PARENT = {
     detail: parent
@@ -95,7 +100,10 @@ def _missing_labels(
         for canonical in _PARENT_DETAILS[parent]:
             if canonical == "branch":
                 continue
-            if labels.isdisjoint(_DETAIL_ALIASES[canonical]):
+            if (
+                canonical in _COUNTABLE_DETAIL_LABELS
+                or labels.isdisjoint(_DETAIL_ALIASES[canonical])
+            ):
                 requested.append(canonical)
     return requested
 
@@ -112,10 +120,30 @@ def _main_recovery_labels(detections: List[Dict[str, Any]]) -> List[str]:
 def _recovered_parent_detail_labels(
     main_recovery_labels: List[str],
 ) -> List[str]:
-    return [
+    return list(dict.fromkeys(
         detail
         for parent in main_recovery_labels
         for detail in _RECOVERED_PARENT_DETAILS[parent]
+    ))
+
+
+def _detail_bbox_context(
+    detections: List[Dict[str, Any]], labels: List[str]
+) -> List[Dict[str, Any]]:
+    """Describe existing instances so the VLM returns only uncovered ones."""
+    return [
+        {
+            "label": label,
+            "parent": _DETAIL_PARENT[label],
+            "countable": label in _COUNTABLE_DETAIL_LABELS,
+            "existing_bboxes": [
+                detection["bbox"]
+                for detection in detections
+                if str(detection.get("label", "")).lower().strip()
+                in _DETAIL_ALIASES[label]
+            ],
+        }
+        for label in dict.fromkeys(labels)
     ]
 
 
@@ -174,6 +202,7 @@ def _prompt(
     missing_labels: List[str],
     main_recovery_labels: List[str],
     recovered_parent_detail_labels: List[str],
+    detail_bbox_context: List[Dict[str, Any]],
     shoe_recovery_requested: bool,
     width: int,
     height: int,
@@ -184,6 +213,7 @@ def _prompt(
             "label": item["detection"]["label"],
             "confidence": item["detection"]["confidence"],
             "bbox": item["detection"]["bbox"],
+            "verification_scope": item.get("verification_scope", "trigger_a"),
         }
         for item in candidates
     ]
@@ -196,14 +226,28 @@ The original image is {width}x{height} pixels. Every bbox uses original-image pi
 coordinates [x1, y1, x2, y2], with origin at the top-left. Coordinates must satisfy
 0 <= x1 < x2 <= {width} and 0 <= y1 < y2 <= {height}.
 
-For every low-confidence candidate, return its candidate_id and whether that exact
+For every verification candidate, return its candidate_id and whether that exact
 labeled element is visibly present near the supplied bbox. For every requested main
 object or missing detail label, return the label and whether it is visibly present. If
 present, return its tight pixel bbox; if absent, return null for bbox. Do not add labels
 that were not requested.
 
+A candidate with verification_scope=tree_main must tightly enclose a clearly visible
+whole tree. Set present=false for a person, house, page-wide region, or unrelated marks
+incorrectly labeled as tree. When uncertain, keep the candidate with present=true. If
+all supplied tree_main candidates are invalid but a separate whole tree is clearly
+visible, return it once as the requested tree main-object recovery. Otherwise return
+tree present=false in the missing array; do not duplicate a valid candidate.
+
+For a verification candidate labeled root, use the same conservative visual definition
+as a missing root: it is present only when clearly root-shaped lines extend from the
+tree base. A ground line, trunk-ground junction, or nearby unrelated stroke is false.
+A widened/flared trunk base and bark hatching contained inside the trunk silhouette
+are not separate roots. Require distinct root-shaped extensions beyond that silhouette;
+if no such extension is clearly visible, set present=false for root verification.
+
 Requested main-object recovery labels are conservative whole-object checks. Set a main
-object present=true only when the complete house or person is clearly and directly
+object present=true only when the complete house, tree, or person is clearly and directly
 visible, and return a bbox enclosing that whole object. Do not infer a main object from
 an isolated part, such as a shoe, hand, window, or line.
 
@@ -228,13 +272,23 @@ low-confidence candidate verification above:
 - For fruit: set present=true only for a clearly drawn fruit-like object located in the
   tree or crown. A single ambiguous dot, decoration, eye-like circle, or unrelated small
   round mark is not fruit. If its identity as fruit is uncertain, set present=false.
+- For a supplied countable verification candidate, set present=false only when the
+  marked bbox is clearly an unrelated object. Keep a partial or stylized but plausible
+  instance with present=true; the additional-instance check is not a replacement for
+  an existing candidate.
+- Countable labels are window, fruit, flower, arm, hand, leg, and foot. Their existing
+  detector bboxes are supplied below. Return one present=true missing item per clear
+  additional instance that is not already covered by an existing bbox. Multiple items
+  with the same countable label are allowed. Do not recount or replace existing
+  instances. If there is no additional instance, return exactly one present=false item
+  with bbox=null for that label. For every non-countable label return exactly one item.
 {'''- Shoes is also requested as a conditional replacement. Verify each existing shoe
   candidate independently and do not keep a wrong candidate. In the missing result for
   shoes, return present=true with a new tight bbox only if all supplied shoe candidates
   are invalid and a separate, clear shoe outline is directly visible at the person’s
   actual foot area. Otherwise return present=false with bbox=null.''' if shoe_recovery_requested else ''}
 
-Low-confidence candidates:
+Verification candidates:
 {json.dumps(candidate_payload, ensure_ascii=False)}
 
 Missing labels to check because their parent object exists:
@@ -248,6 +302,9 @@ Details to verify only for those recovered main objects:
     {"label": label, "parent": _DETAIL_PARENT[label]}
     for label in recovered_parent_detail_labels
 ], ensure_ascii=False)}
+
+Requested detail labels and already-covered detector bboxes:
+{json.dumps(detail_bbox_context, ensure_ascii=False)}
 """
 
 
@@ -299,14 +356,14 @@ def _apply_response(
         | set(recovered_parent_detail_labels)
     )
     proposed_additions: List[Dict[str, Any]] = []
-    seen_labels = set()
+    items_by_label: Dict[str, List[Dict[str, Any]]] = {}
     for item in missing:
         if not isinstance(item, dict) or type(item.get("present")) is not bool:
             raise ValueError("invalid missing item")
         label = item.get("label")
-        if label not in expected_labels or label in seen_labels:
-            raise ValueError("unknown or duplicate missing label")
-        seen_labels.add(label)
+        if label not in expected_labels:
+            raise ValueError("unknown missing label")
+        items_by_label.setdefault(label, []).append(item)
         if item["present"]:
             is_main_recovery = label in main_recovery_labels
             proposed_additions.append({
@@ -322,31 +379,66 @@ def _apply_response(
             })
         elif item.get("bbox") is not None:
             raise ValueError("absent missing element must have a null bbox")
-    if seen_labels != expected_labels:
-        raise ValueError("not every missing label was checked")
+    # Omitted requested labels conservatively mean "no addition". The response
+    # may contain many conditional/countable checks, and omission must not turn a
+    # valid candidate-verification result into a full fail-open rollback.
+    for label, items in items_by_label.items():
+        if label not in _COUNTABLE_DETAIL_LABELS and len(items) != 1:
+            raise ValueError("duplicate non-countable missing label")
+        # For countable labels, false rows are harmless no-addition markers even
+        # when the model also returns one or more explicit additional instances.
 
     rejected_indexes = {
         item["detection_index"]
         for item in candidates
         if not decisions[item["candidate_id"]]
-        and str(item["detection"].get("label", "")).lower().strip()
-        not in protected_labels
-    }
-    corrected = [item for index, item in enumerate(original) if index not in rejected_indexes]
-
-    main_additions = [
-        item for item in proposed_additions if item["label"] in main_recovery_labels
-    ]
-    corrected.extend(main_additions)
-    detail_additions = [
-        item for item in proposed_additions
-        if item["label"] not in main_recovery_labels
-        and _detail_addition_has_valid_parent(
-            item,
-            corrected,
-            item["label"] in recovered_parent_detail_labels,
+        and (
+            item.get("allow_removal", False)
+            or str(item["detection"].get("label", "")).lower().strip()
+            not in protected_labels
         )
-    ]
+    }
+    candidate_by_detection_index = {
+        item["detection_index"]: item for item in candidates
+    }
+    corrected = []
+    for index, item in enumerate(original):
+        if index not in rejected_indexes:
+            corrected.append(item)
+            continue
+        candidate = candidate_by_detection_index[index]
+        if candidate.get("verification_scope") == "tree_main":
+            # A rejected tree bbox must not represent/display a tree or affect
+            # relationships, but it remains an aggregation-only spatial hint so
+            # the established flower multi-parent policy does not regress.
+            aggregation_parent = dict(item)
+            aggregation_parent["use_for_display"] = False
+            aggregation_parent["use_for_analysis"] = False
+            aggregation_parent["use_for_tree_aggregation"] = True
+            corrected.append(aggregation_parent)
+    corrected, duplicate_tree_count = _deduplicate_tree_main_detections(corrected)
+
+    main_additions = []
+    for item in proposed_additions:
+        label = item["label"]
+        if label not in main_recovery_labels:
+            continue
+        if any(
+            detection.get("use_for_analysis", True)
+            and
+            str(detection.get("label", "")).lower().strip()
+            in _PARENT_ALIASES[label]
+            for detection in corrected
+        ):
+            continue
+        main_additions.append(item)
+    corrected.extend(main_additions)
+    detail_additions = []
+    for item in proposed_additions:
+        if item["label"] in main_recovery_labels:
+            continue
+        if _detail_addition_has_valid_parent(item, corrected + detail_additions):
+            detail_additions.append(item)
 
     additions = detail_additions
     if shoe_recovery_requested:
@@ -377,7 +469,7 @@ def _apply_response(
     return corrected, _metadata(
         triggered=True,
         verified_count=len(candidates),
-        removed_count=len(rejected_indexes),
+        removed_count=len(rejected_indexes) + duplicate_tree_count,
         added_count=len(main_additions) + len(additions),
     )
 
@@ -385,7 +477,6 @@ def _apply_response(
 def _detail_addition_has_valid_parent(
     addition: Dict[str, Any],
     detections: List[Dict[str, Any]],
-    skip_when_existing: bool = False,
 ) -> bool:
     from app.services.yolo_service import (
         _clean_label,
@@ -399,31 +490,57 @@ def _detail_addition_has_valid_parent(
     parent = _DETAIL_PARENT.get(label)
     if parent is None:
         return False
-    parent_bbox = _pick_best_bbox(
-        detections, parent, allow_subobject_fallback=False
-    )
-    if parent_bbox is None:
-        return False
-    if skip_when_existing and any(
-        _clean_label(detection.get("label", "")) in _DETAIL_ALIASES[label]
-        and (
-            _is_shoe_spatially_consistent(
-                detection["bbox"], parent_bbox, detection["label"]
+    if parent == "tree" and label == "flower":
+        parent_bboxes = [
+            detection["bbox"]
+            for detection in detections
+            if detection.get(
+                "use_for_tree_aggregation",
+                detection.get("use_for_analysis", True),
             )
-            if label == "shoes"
-            else _passes_spatial_check(
-                detection["bbox"], parent_bbox, detection["label"]
-            )
+            and _clean_label(detection.get("label", ""))
+            in _PARENT_ALIASES["tree"]
+        ]
+    else:
+        parent_bbox = _pick_best_bbox(
+            detections, parent, allow_subobject_fallback=False
         )
+        parent_bboxes = [parent_bbox] if parent_bbox is not None else []
+    if not parent_bboxes:
+        return False
+    spatially_valid_existing = [
+        detection
         for detection in detections
+        if _clean_label(detection.get("label", "")) in _DETAIL_ALIASES[label]
+        and any(
+            (
+                _is_shoe_spatially_consistent(
+                    detection["bbox"], parent_bbox, detection["label"]
+                )
+                if label == "shoes"
+                else _passes_spatial_check(
+                    detection["bbox"], parent_bbox, detection["label"]
+                )
+            )
+            for parent_bbox in parent_bboxes
+        )
+    ]
+    if label not in _COUNTABLE_DETAIL_LABELS and spatially_valid_existing:
+        return False
+    if any(
+        _same_visible_instance(addition["bbox"], detection["bbox"])
+        for detection in spatially_valid_existing
     ):
         return False
     if label == "shoes":
         return _is_shoe_spatially_consistent(
-            addition["bbox"], parent_bbox, "shoes"
+            addition["bbox"], parent_bboxes[0], "shoes"
         )
     if label != "fruit":
-        return _passes_spatial_check(addition["bbox"], parent_bbox, label)
+        return any(
+            _passes_spatial_check(addition["bbox"], parent_bbox, label)
+            for parent_bbox in parent_bboxes
+        )
 
     crown_candidates = [
         detection
@@ -433,9 +550,61 @@ def _detail_addition_has_valid_parent(
     fruit_parent_bbox = (
         max(crown_candidates, key=lambda item: item["confidence"])["bbox"]
         if crown_candidates
-        else parent_bbox
+        else parent_bboxes[0]
     )
     return _is_center_inside(addition["bbox"], fruit_parent_bbox)
+
+
+def _same_visible_instance(
+    bbox_a: Dict[str, int], bbox_b: Dict[str, int], minimum_overlap: float = 0.5
+) -> bool:
+    """Treat substantially overlapping boxes as the same visible instance."""
+    intersection_width = max(
+        0, min(bbox_a["x2"], bbox_b["x2"]) - max(bbox_a["x1"], bbox_b["x1"])
+    )
+    intersection_height = max(
+        0, min(bbox_a["y2"], bbox_b["y2"]) - max(bbox_a["y1"], bbox_b["y1"])
+    )
+    intersection = intersection_width * intersection_height
+    area_a = max((bbox_a["x2"] - bbox_a["x1"]) * (bbox_a["y2"] - bbox_a["y1"]), 1)
+    area_b = max((bbox_b["x2"] - bbox_b["x1"]) * (bbox_b["y2"] - bbox_b["y1"]), 1)
+    return intersection / min(area_a, area_b) >= minimum_overlap
+
+
+def _deduplicate_tree_main_detections(
+    detections: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], int]:
+    """Collapse near-identical model boxes without discarding separate real trees."""
+    tree_indexes = [
+        index
+        for index, detection in enumerate(detections)
+        if str(detection.get("label", "")).lower().strip()
+        in _PARENT_ALIASES["tree"]
+        and detection.get("use_for_analysis", True)
+    ]
+    selected_indexes: List[int] = []
+    for index in sorted(
+        tree_indexes,
+        key=lambda item: float(detections[item].get("confidence", 0.0)),
+        reverse=True,
+    ):
+        if any(
+            _same_visible_instance(
+                detections[index]["bbox"],
+                detections[selected]["bbox"],
+                minimum_overlap=0.8,
+            )
+            for selected in selected_indexes
+        ):
+            continue
+        selected_indexes.append(index)
+    selected = set(selected_indexes)
+    deduplicated = [
+        detection
+        for index, detection in enumerate(detections)
+        if index not in tree_indexes or index in selected
+    ]
+    return deduplicated, len(tree_indexes) - len(selected_indexes)
 
 
 def _has_spatial_shoe_evidence(detections: List[Dict[str, Any]]) -> bool:
@@ -475,6 +644,7 @@ def apply_vlm_fallback(
         return all_detections, _metadata()
 
     candidates = []
+    candidate_by_index: Dict[int, Dict[str, Any]] = {}
     for index, detection in enumerate(all_detections):
         try:
             confidence = float(detection["confidence"])
@@ -484,11 +654,37 @@ def apply_vlm_fallback(
             index in trigger_a_detection_indexes
             and YOLO_HTP_CONF_THRESHOLD <= confidence < OPENAI_VLM_VERIFY_CONF_MAX
         ):
-            candidates.append({
+            candidate = {
                 "candidate_id": len(candidates),
                 "detection_index": index,
                 "detection": detection,
-            })
+                "verification_scope": "trigger_a",
+                "allow_removal": False,
+            }
+            candidates.append(candidate)
+            candidate_by_index[index] = candidate
+
+    # Tree main candidates are verified independently of Trigger A confidence.
+    # A drawing can contain multiple real trees, so the VLM decides each exact bbox;
+    # only explicit rejections are removable and every error remains fail-open.
+    tree_main_indexes = [
+        index
+        for index, detection in enumerate(all_detections)
+        if str(detection.get("label", "")).lower().strip()
+        in _PARENT_ALIASES["tree"]
+    ]
+    for index in tree_main_indexes:
+        candidate = candidate_by_index.get(index)
+        if candidate is None:
+            candidate = {
+                "candidate_id": len(candidates),
+                "detection_index": index,
+                "detection": all_detections[index],
+            }
+            candidates.append(candidate)
+            candidate_by_index[index] = candidate
+        candidate["verification_scope"] = "tree_main"
+        candidate["allow_removal"] = True
 
     spatially_relevant_detections = [
         detection
@@ -498,9 +694,18 @@ def apply_vlm_fallback(
     missing_labels = _missing_labels(
         spatially_relevant_detections, selected_parent_types
     )
-    main_recovery_labels = _main_recovery_labels(all_detections)
+    absent_main_recovery_labels = _main_recovery_labels(all_detections)
+    main_recovery_labels = list(absent_main_recovery_labels)
+    # Also request a conditional replacement in the same response. It is applied
+    # only if verification removes every supplied tree main candidate.
+    if tree_main_indexes and "tree" not in main_recovery_labels:
+        main_recovery_labels.append("tree")
     recovered_parent_detail_labels = _recovered_parent_detail_labels(
-        main_recovery_labels
+        absent_main_recovery_labels
+    )
+    detail_bbox_context = _detail_bbox_context(
+        all_detections,
+        list(dict.fromkeys(missing_labels + recovered_parent_detail_labels)),
     )
     spatial_shoe_indexes = {
         index
@@ -531,7 +736,7 @@ def apply_vlm_fallback(
 
     try:
         image_url, width, height = _encode_image(Path(original_image_path))
-        response = client.with_options(timeout=30.0).responses.create(
+        response = client.with_options(timeout=30.0, max_retries=0).responses.create(
             model=OPENAI_VLM_MODEL,
             input=[{
                 "role": "user",
@@ -541,6 +746,7 @@ def apply_vlm_fallback(
                         missing_labels,
                         main_recovery_labels,
                         recovered_parent_detail_labels,
+                        detail_bbox_context,
                         shoe_recovery_requested,
                         width,
                         height,

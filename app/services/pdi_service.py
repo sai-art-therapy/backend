@@ -1,10 +1,86 @@
 from datetime import datetime
+import re
 from typing import List
 
 from sqlalchemy.orm import Session
 
 from app.models.htp_pdi import HtpPdiInteraction
 from app.models.htp_test import HtpTest
+
+
+_PDI_VISIBLE_FEATURES = (
+    (("문", "door"), ("house", "parts", "door", "detected"), "boolean"),
+    (("창문", "window"), ("house", "parts", "window", "count"), "count"),
+    (("지붕", "roof"), ("house", "parts", "roof", "detected"), "boolean"),
+    (("굴뚝", "chimney"), ("house", "parts", "chimney", "detected"), "boolean"),
+    (("벽", "wall"), ("house", "parts", "wall", "detected"), "boolean"),
+    (("줄기", "trunk"), ("tree", "parts", "trunk", "detected"), "boolean"),
+    (("수관", "crown"), ("tree", "parts", "crown", "detected"), "boolean"),
+    # A crown detection does not measure individual leaves. With no leaves field,
+    # absence questions about leaves are unsupported even if branches are absent.
+    (("잎", "잎사귀", "나뭇잎", "leaf", "leaves"), ("tree", "parts", "leaves", "detected"), "boolean"),
+    (("가지", "branch"), ("tree", "parts", "branch", "detected"), "boolean"),
+    (("뿌리", "root"), ("tree", "parts", "roots", "detected"), "boolean"),
+    (("열매", "fruit"), ("tree", "parts", "fruit", "count"), "count"),
+    (("꽃", "flower"), ("tree", "parts", "flower", "count"), "count"),
+    (("머리", "head"), ("person", "parts", "head", "detected"), "boolean"),
+    (("얼굴", "face"), ("person", "parts", "face", "detected"), "boolean"),
+    (("손", "hand"), ("person", "parts", "hands", "count"), "count"),
+    (("발", "foot", "feet"), ("person", "parts", "feet", "count"), "count"),
+    (("팔", "arm"), ("person", "parts", "arms", "count"), "count"),
+    (("다리", "leg"), ("person", "parts", "legs", "count"), "count"),
+    (("신발", "shoe"), ("person", "parts", "shoes", "detected"), "boolean"),
+)
+
+
+def _nested_value(value: dict, path: tuple[str, ...]):
+    current = value
+    for key in path:
+        if not isinstance(current, dict):
+            return None
+        current = current.get(key)
+    return current
+
+
+def _filter_grounded_pdi_questions(questions: list[dict], visual: dict) -> list[dict]:
+    """Allow missing-element questions only for explicitly absent features."""
+    grounded = []
+    for question in questions:
+        text = str(question.get("question_text", "")).lower()
+        # The model sometimes puts an absence question under default_pdi.
+        has_absence_premise = any(term in text for term in (
+            "없", "그리지 않", "안 그", "빠져", "생략", "missing", "not drawn",
+        ))
+        if question.get("question_type") != "missing_element" and not has_absence_premise:
+            grounded.append(question)
+            continue
+        matched_values = []
+        for aliases, path, kind in _PDI_VISIBLE_FEATURES:
+            if not any(_mentions_feature(text, alias) for alias in aliases):
+                continue
+            value = _nested_value(visual, path)
+            absent = value is False if kind == "boolean" else type(value) is int and value == 0
+            matched_values.append(absent)
+        if not matched_values:
+            for label, aliases in (("house", ("집", "house")), ("tree", ("나무", "tree")),
+                                   ("person", ("사람", "person"))):
+                if any(_mentions_feature(text, alias) for alias in aliases):
+                    matched_values.append(_nested_value(visual, (label, "detected")) is False)
+        if matched_values and all(matched_values):
+            grounded.append(question)
+    return grounded
+
+
+def _mentions_feature(text: str, alias: str) -> bool:
+    # Korean particles attach to nouns. Avoid treating 창문 as 문, 신발 as 발,
+    # or 발달 as 발; English aliases also need word boundaries.
+    if alias.isascii():
+        return re.search(r"\b" + re.escape(alias) + r"s?\b", text) is not None
+    return re.search(
+        r"(?<![가-힣a-z])" + re.escape(alias)
+        + r"(?=$|[^가-힣a-z]|은|는|이|가|을|를|에|도|만|과|와|의|처럼|하고|이나|나)",
+        text,
+    ) is not None
 
 
 def create_pdi_questions(htp_test: HtpTest, db: Session) -> List[HtpPdiInteraction]:
@@ -66,6 +142,9 @@ def create_pdi_questions(htp_test: HtpTest, db: Session) -> List[HtpPdiInteracti
      - ✅ 올바른 예: "사람을 그려주셨네요. 이 사람은 누구인가요?"
      - ✅ 올바른 예: "창문을 그려주셨네요. 어떤 역할을 한다고 생각하나요?"
    - 객체의 존재 여부만 언급하고, 수량·크기·위치 등 수치적 표현은 사용하지 말 것
+   - missing_element 질문은 분석 결과가 detected=false 또는 count=0인 요소에만 만들 것
+   - detected=true 또는 count>0인 요소를 없거나 그리지 않은 것으로 질문하지 말 것
+   - 한 질문에 absent 요소와 present 요소를 섞어 둘 다 없다고 전제하지 말 것
 
 ## 출력 형식 (JSON만 응답)
 {{
@@ -85,6 +164,7 @@ def create_pdi_questions(htp_test: HtpTest, db: Session) -> List[HtpPdiInteracti
     
     # drawing_time 타입 질문 제외 (별도 엔드포인트로 분리)
     questions = [q for q in questions if q.get("question_type") != "drawing_time"]
+    questions = _filter_grounded_pdi_questions(questions, visual)
 
     interactions = []
 
