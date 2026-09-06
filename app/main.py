@@ -6,6 +6,7 @@ from app.routers import (
     chat,
     children,
     drawings,
+    health,
     home,
     mypage,
     rag_admin,
@@ -39,6 +40,7 @@ app.include_router(drawings.router, prefix="/tests", tags=["Tests"])
 app.include_router(reports.router, prefix="/reports", tags=["Reports"])
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(mypage.router, prefix="/mypage", tags=["Mypage"])
+app.include_router(health.router, prefix="/health", tags=["Health"])
 
 # RAG 관리자 API
 app.include_router(rag_admin.router)

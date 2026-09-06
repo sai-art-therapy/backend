@@ -18,6 +18,7 @@ CHROMA_HTP_COLLECTION = os.getenv("CHROMA_HTP_COLLECTION", "htp_knowledge")
 
 # PostgreSQL 설정
 DATABASE_URL = os.getenv("DATABASE_URL")
+SQLALCHEMY_ECHO = os.getenv("SQLALCHEMY_ECHO", "false").lower() == "true"
 
 # YOLO HTP 이미지 분석 설정 (house / tree / person 모델 분리)
 YOLO_HTP_HOUSE_WEIGHTS_PATH  = os.getenv("YOLO_HTP_HOUSE_WEIGHTS_PATH",  "ml_models/yolo/house_best.pt")
@@ -33,9 +34,13 @@ YOLO_HTP_CONF_THRESHOLD  = float(os.getenv("YOLO_HTP_CONF_THRESHOLD", "0.25"))
 YOLO_HTP_FALLBACK_ENABLED = os.getenv("YOLO_HTP_FALLBACK_ENABLED", "true").lower() == "true"
 
 # JWT 설정
-JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY", "your-secret-key-change-this")
+JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
+
+# 운영 관리자 API는 명시적으로 활성화한 환경에서만 사용합니다.
+RAG_ADMIN_ENABLED = os.getenv("RAG_ADMIN_ENABLED", "false").lower() == "true"
+RAG_ADMIN_TOKEN = os.getenv("RAG_ADMIN_TOKEN")
 
 # Google OAuth 설정
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
@@ -47,3 +52,15 @@ if not OPENAI_API_KEY:
 
 if not DATABASE_URL:
     raise ValueError("DATABASE_URL이 설정되지 않았습니다. .env 파일을 확인하세요.")
+
+if (
+    not JWT_SECRET_KEY
+    or len(JWT_SECRET_KEY) < 32
+    or JWT_SECRET_KEY == "your-secret-key-change-this"
+):
+    raise ValueError("JWT_SECRET_KEY는 32자 이상의 안전한 값이어야 합니다.")
+
+if RAG_ADMIN_ENABLED and (not RAG_ADMIN_TOKEN or len(RAG_ADMIN_TOKEN) < 32):
+    raise ValueError(
+        "RAG_ADMIN_ENABLED=true인 경우 RAG_ADMIN_TOKEN을 32자 이상으로 설정해야 합니다."
+    )

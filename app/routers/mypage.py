@@ -9,6 +9,10 @@ from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.child import Child
 from app.models.user import User
+from app.services.file_cleanup_service import (
+    collect_htp_test_file_paths,
+    delete_managed_files,
+)
 
 router = APIRouter()
 
@@ -123,8 +127,10 @@ def delete_account(
     db: Session = Depends(get_db),
     current_user: User = Depends(get_current_user),
 ):
+    file_paths = collect_htp_test_file_paths(current_user.htp_tests)
     db.delete(current_user)
     db.commit()
+    delete_managed_files(file_paths)
 
     return {
         "message": "회원 탈퇴가 완료되었습니다.",

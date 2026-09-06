@@ -3,7 +3,8 @@ set -Eeuo pipefail
 
 readonly REPOSITORY_DIR="/home/ubuntu/backend"
 readonly SERVICE_NAME="gdam-backend"
-readonly LOCAL_HEALTH_URL="http://127.0.0.1:8000/"
+readonly LOCAL_HEALTH_URL="http://127.0.0.1:8000/health/ready"
+readonly ROLLBACK_HEALTH_URL="http://127.0.0.1:8000/"
 readonly EXPECTED_SHA="${1:?Expected Git commit SHA is required}"
 
 previous_sha=""
@@ -11,9 +12,10 @@ deployment_started="false"
 requirements_changed="false"
 
 wait_for_health() {
+    local health_url="${1:-${LOCAL_HEALTH_URL}}"
     local attempt
     for attempt in {1..12}; do
-        if curl --fail --silent --show-error --max-time 5 "${LOCAL_HEALTH_URL}" >/dev/null; then
+        if curl --fail --silent --show-error --max-time 5 "${health_url}" >/dev/null; then
             return 0
         fi
         sleep 5
@@ -38,7 +40,7 @@ rollback() {
             .venv/bin/python -m pip install --disable-pip-version-check -r requirements.txt
         fi
         sudo -n systemctl restart "${SERVICE_NAME}"
-        wait_for_health || true
+        wait_for_health "${ROLLBACK_HEALTH_URL}" || true
     fi
 
     exit "${exit_code}"
@@ -79,6 +81,8 @@ fi
 .venv/bin/python -m unittest discover -s tests -v
 .venv/bin/python scripts/create_tables.py
 
+sudo -n install -m 0644 deploy/gdam-backend.service /etc/systemd/system/gdam-backend.service
+sudo -n systemctl daemon-reload
 sudo -n systemctl restart "${SERVICE_NAME}"
 sudo -n systemctl is-active --quiet "${SERVICE_NAME}"
 wait_for_health

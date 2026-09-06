@@ -1,10 +1,11 @@
 from datetime import datetime
 import os
 import re
+import secrets
 from urllib.parse import urlencode
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
@@ -23,6 +24,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth"
 GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo"
+OAUTH_STATE_COOKIE = "gdam_oauth_state"
 
 # Google 로그인 성공 후 최종적으로 이동할 프론트 주소
 # 로컬 예: http://localhost:5173/auth/callback
@@ -213,6 +215,7 @@ def google_login():
     프론트에서 Google 로그인 버튼 클릭 시 이 주소로 이동.
     이후 Google 로그인 화면으로 redirect된다.
     """
+    oauth_state = secrets.token_urlsafe(32)
     params = {
         "client_id": GOOGLE_CLIENT_ID,
         "redirect_uri": GOOGLE_REDIRECT_URI,
@@ -220,15 +223,31 @@ def google_login():
         "scope": "openid email profile",
         "access_type": "offline",
         "prompt": "consent",
+        "state": oauth_state,
     }
 
     google_login_url = f"{GOOGLE_AUTH_URL}?{urlencode(params)}"
 
-    return RedirectResponse(url=google_login_url)
+    response = RedirectResponse(url=google_login_url)
+    response.set_cookie(
+        key=OAUTH_STATE_COOKIE,
+        value=oauth_state,
+        max_age=600,
+        path="/auth/google",
+        secure=True,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
 
 
 @router.get("/google/callback", summary="구글 로그인 콜백")
-def google_callback(code: str, db: Session = Depends(get_db)):
+def google_callback(
+    request: Request,
+    code: str,
+    state: str,
+    db: Session = Depends(get_db),
+):
     """
     Google 로그인 성공 후 Google이 호출하는 백엔드 콜백.
 
@@ -240,6 +259,17 @@ def google_callback(code: str, db: Session = Depends(get_db)):
     5. 우리 서비스 JWT 발급
     6. JSON을 보여주지 않고 프론트 callback 페이지로 redirect
     """
+
+    expected_state = request.cookies.get(OAUTH_STATE_COOKIE)
+    if (
+        not expected_state
+        or not state
+        or not secrets.compare_digest(state, expected_state)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="유효하지 않은 OAuth 요청입니다.",
+        )
 
     # 1. code → Google access_token 교환
     token_response = httpx.post(
@@ -318,7 +348,15 @@ def google_callback(code: str, db: Session = Depends(get_db)):
     # 6. 브라우저에 JSON을 보여주지 않고 프론트 callback 페이지로 이동
     redirect_url = make_frontend_redirect_url(auth_response)
 
-    return RedirectResponse(url=redirect_url)
+    response = RedirectResponse(url=redirect_url)
+    response.delete_cookie(
+        key=OAUTH_STATE_COOKIE,
+        path="/auth/google",
+        secure=True,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
 
 
 # =========================

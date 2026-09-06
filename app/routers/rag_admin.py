@@ -1,11 +1,43 @@
-from fastapi import APIRouter, Query
+import secrets
 
-from app.core.config import CHROMA_HTP_COLLECTION, CHROMA_PARENTING_COLLECTION
+from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+
+from app.core.config import (
+    CHROMA_HTP_COLLECTION,
+    CHROMA_PARENTING_COLLECTION,
+    RAG_ADMIN_ENABLED,
+    RAG_ADMIN_TOKEN,
+)
 from app.services.chroma_service import search_documents
 from app.services.htp_ingest_service import ingest_htp_knowledge
 from app.services.ingest_service import ingest_parenting_guides
 
-router = APIRouter(prefix="/api/admin/rag", tags=["RAG Admin"])
+
+def require_rag_admin(
+    admin_token: str | None = Header(default=None, alias="X-Admin-Token"),
+) -> None:
+    if not RAG_ADMIN_ENABLED:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="관리자 API가 비활성화되어 있습니다.",
+        )
+    if not admin_token or not RAG_ADMIN_TOKEN:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="관리자 인증이 필요합니다.",
+        )
+    if not secrets.compare_digest(admin_token, RAG_ADMIN_TOKEN):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="관리자 권한이 없습니다.",
+        )
+
+
+router = APIRouter(
+    prefix="/api/admin/rag",
+    tags=["RAG Admin"],
+    dependencies=[Depends(require_rag_admin)],
+)
 
 
 @router.post("/ingest")

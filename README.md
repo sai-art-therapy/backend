@@ -114,7 +114,8 @@ GDAM Backend는 아동 HTP(집-나무-사람) 그림 검사와 PDI 답변을 기
 | Infra           | AWS EC2, Nginx, HTTPS(Certbot) |
 
 카메라/앨범 이미지 업로드 규격은 [docs/image-upload-api.md](docs/image-upload-api.md),
-앱 직접 그리기 연동 규격은 [docs/canvas-drawing-api.md](docs/canvas-drawing-api.md)를 참고합니다.
+앱 직접 그리기 연동 규격은 [docs/canvas-drawing-api.md](docs/canvas-drawing-api.md),
+배포·보안·상태 확인 방법은 [docs/operations.md](docs/operations.md)를 참고합니다.
 
 ---
 
@@ -172,10 +173,13 @@ python scripts/create_tables.py
 python scripts/ingest_parenting_guides.py
 ```
 
-HTP 지식 데이터는 서버 실행 후 관리자 API를 통해 적재할 수 있습니다.
+HTP 지식 데이터는 서버 실행 후 보호된 관리자 API를 통해 적재할 수 있습니다.
+관리자 API 활성화 및 인증 방법은 [운영 가이드](docs/operations.md)를 참고합니다.
 
 ```bash
-curl -X POST http://localhost:8000/api/admin/rag/ingest-htp
+curl -X POST \
+  -H "X-Admin-Token: ${RAG_ADMIN_TOKEN}" \
+  http://localhost:8000/api/admin/rag/ingest-htp
 ```
 
 ### 5. 개발 서버 실행
@@ -197,6 +201,7 @@ OPENAI_CHAT_MODEL=
 OPENAI_EMBEDDING_MODEL=
 
 DATABASE_URL=
+SQLALCHEMY_ECHO=false
 
 CHROMA_PATH=
 CHROMA_PARENTING_COLLECTION=
@@ -205,6 +210,9 @@ CHROMA_HTP_COLLECTION=
 JWT_SECRET_KEY=
 JWT_ALGORITHM=
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES=
+
+RAG_ADMIN_ENABLED=false
+RAG_ADMIN_TOKEN=
 
 GOOGLE_CLIENT_ID=
 GOOGLE_CLIENT_SECRET=
