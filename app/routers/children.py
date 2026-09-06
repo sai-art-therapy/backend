@@ -6,6 +6,10 @@ from app.core.dependencies import get_current_user
 from app.db.session import get_db
 from app.models.child import Child
 from app.models.user import User
+from app.services.file_cleanup_service import (
+    collect_htp_test_file_paths,
+    delete_managed_files,
+)
 
 router = APIRouter()
 
@@ -158,8 +162,10 @@ def delete_child(
             detail="자녀 정보를 찾을 수 없습니다.",
         )
 
+    file_paths = collect_htp_test_file_paths(child.htp_tests)
     db.delete(child)
     db.commit()
+    delete_managed_files(file_paths)
 
     return {
         "child_id": child_id,
