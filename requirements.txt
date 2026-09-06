@@ -11,6 +11,7 @@ python-multipart
 opencv-python
 ultralytics
 pillow
+pillow-heif
 python-jose[cryptography]
 passlib[bcrypt]
 google-auth

@@ -56,7 +56,8 @@ GDAM Backend는 아동 HTP(집-나무-사람) 그림 검사와 PDI 답변을 기
 ### 2. HTP 검사 흐름
 
 * HTP 검사 생성
-* 집, 나무, 사람 그림 이미지 업로드
+* 집, 나무, 사람 그림 이미지 업로드(JPEG/PNG/WebP/HEIC/HEIF, 최대 25MB·60MP)
+* 앱에서 직접 그린 그림과 좌표·시간·실측 필압 데이터 업로드
 * 검사 상태 관리
 * 그리기 소요 시간 저장
 
@@ -111,6 +112,9 @@ GDAM Backend는 아동 HTP(집-나무-사람) 그림 검사와 PDI 답변을 기
 | Image Analysis  | YOLOv8, OpenCV, Pillow         |
 | Config          | Pydantic, python-dotenv        |
 | Infra           | AWS EC2, Nginx, HTTPS(Certbot) |
+
+카메라/앨범 이미지 업로드 규격은 [docs/image-upload-api.md](docs/image-upload-api.md),
+앱 직접 그리기 연동 규격은 [docs/canvas-drawing-api.md](docs/canvas-drawing-api.md)를 참고합니다.
 
 ---
 
