@@ -6,7 +6,7 @@ import unittest
 from io import BytesIO
 from types import SimpleNamespace
 
-from fastapi import FastAPI, UploadFile
+from fastapi import FastAPI, HTTPException, UploadFile
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -159,7 +159,7 @@ class CanvasDrawingRouterTest(unittest.TestCase):
         self.assertGreater(len(drawing_data), 1024 * 1024)
 
         image_buffer = BytesIO()
-        Image.new("RGB", (64, 48), "white").save(image_buffer, format="PNG")
+        Image.new("RGB", (1024, 768), "white").save(image_buffer, format="PNG")
 
         with tempfile.TemporaryDirectory() as temp_dir:
             previous_directory = os.getcwd()
@@ -185,6 +185,38 @@ class CanvasDrawingRouterTest(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["point_count"], 30_000)
+
+    def test_rejects_canvas_metadata_and_image_size_mismatch(self):
+        db = _FakeDb(_build_test_record())
+        payload = {
+            "schema_version": 1,
+            "canvas": {"width": 128, "height": 96},
+            "duration_ms": 1_000,
+            "strokes": [
+                {
+                    "pointer_type": "mouse",
+                    "pressure_source": "unavailable",
+                    "points": [{"x": 0.1, "y": 0.2, "t_ms": 0}],
+                }
+            ],
+        }
+
+        with self.assertRaises(HTTPException) as context:
+            asyncio.run(
+                upload_canvas_drawing(
+                    test_id=10,
+                    drawing_data=_build_json_upload(payload),
+                    file=_build_png_upload(),
+                    db=db,
+                    current_user=SimpleNamespace(id=3),
+                )
+            )
+
+        self.assertEqual(context.exception.status_code, 422)
+        self.assertEqual(
+            context.exception.detail["code"],
+            "canvas_image_size_mismatch",
+        )
 
 
 if __name__ == "__main__":

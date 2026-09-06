@@ -168,6 +168,20 @@ async def upload_canvas_drawing(
 
     image_bytes = await file.read(MAX_IMAGE_BYTES + 1)
     file_ext, rendered_width, rendered_height = _validate_rendered_image(image_bytes)
+    if (
+        rendered_width != payload.canvas.width
+        or rendered_height != payload.canvas.height
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail={
+                "code": "canvas_image_size_mismatch",
+                "message": (
+                    "drawing_data의 canvas 크기는 업로드한 이미지의 실제 픽셀 크기와 "
+                    "같아야 합니다."
+                ),
+            },
+        )
 
     HTP_ORIGINAL_DIR.mkdir(parents=True, exist_ok=True)
     original_filename = file.filename or f"canvas_drawing{file_ext}"

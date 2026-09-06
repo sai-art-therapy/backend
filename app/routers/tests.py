@@ -15,6 +15,11 @@ from app.models.user import User
 from app.services.htp_analysis_service import get_pdi_choice_payload
 from app.services.htp_rag_service import search_htp_knowledge_for_report
 from app.services.htp_report_service import apply_report_to_test, generate_htp_report
+from app.services.image_upload_service import (
+    PHOTO_MAX_IMAGE_BYTES,
+    ImageUploadValidationError,
+    normalize_photo_upload,
+)
 from app.services.pdi_service import (
     create_pdi_questions,
     skip_pdi as skip_pdi_service,
@@ -27,6 +32,7 @@ router = APIRouter()
 UPLOAD_ROOT = Path("uploads")
 HTP_ORIGINAL_DIR = UPLOAD_ROOT / "htp" / "original"
 HTP_RESULT_DIR = UPLOAD_ROOT / "htp" / "result"
+REPLACEABLE_IMAGE_STATUSES = {"created", "image_uploaded", "analysis_failed"}
 
 
 class TestCreateRequest(BaseModel):
@@ -228,22 +234,41 @@ def upload_test_image(
     current_user: User = Depends(get_current_user),
 ):
     htp_test = get_test_or_404(test_id, current_user.id, db)
+    if htp_test.test_status not in REPLACEABLE_IMAGE_STATUSES:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail={
+                "code": "image_not_replaceable",
+                "message": "이미지 분석이 진행된 검사의 그림은 교체할 수 없습니다.",
+            },
+        )
+
+    image_bytes = file.file.read(PHOTO_MAX_IMAGE_BYTES + 1)
+    try:
+        normalized_photo = normalize_photo_upload(image_bytes)
+    except ImageUploadValidationError as exc:
+        raise HTTPException(
+            status_code=exc.status_code,
+            detail={"code": exc.code, "message": exc.message},
+        ) from exc
 
     HTP_ORIGINAL_DIR.mkdir(parents=True, exist_ok=True)
 
     original_filename = file.filename or "uploaded_image"
-    file_ext = Path(original_filename).suffix
-    saved_filename = f"test_{test_id}_{uuid4().hex}{file_ext}"
+    saved_filename = f"test_{test_id}_{uuid4().hex}{normalized_photo.extension}"
     saved_path = HTP_ORIGINAL_DIR / saved_filename
+    saved_path.write_bytes(normalized_photo.content)
 
-    with saved_path.open("wb") as buffer:
-        buffer.write(file.file.read())
+    try:
+        htp_test.original_image_path = str(saved_path)
+        htp_test.test_status = "image_uploaded"
 
-    htp_test.original_image_path = str(saved_path)
-    htp_test.test_status = "image_uploaded"
-
-    db.commit()
-    db.refresh(htp_test)
+        db.commit()
+        db.refresh(htp_test)
+    except Exception:
+        db.rollback()
+        saved_path.unlink(missing_ok=True)
+        raise
 
     return {
         "test_id": htp_test.id,

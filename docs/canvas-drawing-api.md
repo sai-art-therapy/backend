@@ -2,6 +2,7 @@
 
 기존 카메라/앨범 업로드 API인 `POST /tests/{test_id}/image`는 그대로 사용합니다.
 앱에서 직접 그린 그림만 아래 신규 API로 전송합니다.
+카메라/앨범 파일 형식과 크기 제한은 [image-upload-api.md](image-upload-api.md)를 참고합니다.
 
 - 테스트 서버: `https://gdam-test.duckdns.org`
 - Swagger: `https://gdam-test.duckdns.org/docs`
@@ -134,6 +135,7 @@ Content-Type: multipart/form-data
 - 표시용 CSS 크기와 실제 canvas bitmap 크기가 다를 수 있습니다. payload의
   `canvas.width`, `canvas.height`에는 export PNG와 같은 실제 bitmap 크기를 넣습니다.
   좌표는 CSS 크기나 device pixel ratio와 무관하게 계속 `0~1`로 보냅니다.
+- 두 크기가 정확히 일치하지 않으면 `422 canvas_image_size_mismatch`로 거절됩니다.
 
 ## 프론트 요청 예시
 
@@ -359,7 +361,7 @@ useEffect(() => {
 - `409`: 분석/PDI/리포트가 이미 진행되어 그림을 교체할 수 없음
 - `413`: 이미지 또는 그리기 데이터가 허용 크기를 초과함
 - `415`: PNG/JPEG/WEBP가 아닌 파일
-- `422`: 좌표, 시간, 필압 또는 JSON 형식이 잘못됨
+- `422`: 좌표, 시간, 필압, JSON 형식이 잘못되었거나 canvas 크기와 실제 이미지 크기가 다름
 
 오류의 `detail.code`는 프론트 로그 및 분기 처리에 사용할 수 있습니다.
 표시 메시지는 `error.response?.data?.detail?.message`를 우선 사용하고, 문자열 detail인
