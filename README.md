@@ -6,6 +6,8 @@
   <img src="https://img.shields.io/badge/PostgreSQL-Database-4169E1?style=flat-square&logo=postgresql&logoColor=white"/>
   <img src="https://img.shields.io/badge/ChromaDB-RAG-5B5FC7?style=flat-square"/>
   <img src="https://img.shields.io/badge/OpenAI-LLM-412991?style=flat-square&logo=openai&logoColor=white"/>
+  <img src="https://img.shields.io/badge/Docker-Container-2496ED?style=flat-square&logo=docker&logoColor=white"/>
+  <a href="https://github.com/sai-art-therapy/backend/actions/workflows/backend-ci-cd.yml"><img src="https://github.com/sai-art-therapy/backend/actions/workflows/backend-ci-cd.yml/badge.svg?branch=main"/></a>
   <img src="https://img.shields.io/badge/AWS EC2-Deploy-FF9900?style=flat-square&logo=amazonaws&logoColor=white"/>
 </p>
 
@@ -40,9 +42,10 @@ GDAM Backend는 아동 HTP(집-나무-사람) 그림 검사와 PDI 답변을 기
 
 | 담당자 | 담당 영역 | 주요 작업 |
 | --- | --- | --- |
-| 김민하 | Backend / Database / RAG / Infra | FastAPI 서버 구조 설계, PostgreSQL 모델 및 API 구현, 양육 가이드 데이터셋 구축 및 ChromaDB 연동, HTP 지식 데이터 RAG 구축, OpenAI 기반 챗봇 구현, 홈/검사/리포트/채팅 API 개발, AWS EC2 배포, Nginx 및 HTTPS 설정 |
+| 김민하 | Backend / Database / RAG / Infra | FastAPI 서버 구조 설계, PostgreSQL 모델 및 API 구현, 양육 가이드 데이터셋 구축 및 ChromaDB 연동, HTP 지식 데이터 RAG 구축, OpenAI 기반 챗봇 구현, 홈/검사/리포트/채팅 API 개발, Docker·Compose 실행 환경 구축, GitHub Actions CI/CD, AWS EC2·Nginx·HTTPS 운영 |
 | 김하영 | Auth / PDI / Report | Google OAuth 로그인, JWT 인증, HTP 학술 지식 데이터셋 구축 및 정제, PDI 질문 생성 및 답변 저장 로직, HTP 리포트 생성 파이프라인 구현, 리포트 생성용 프롬프트 및 결과 구조 설계 |
 | 김민지 | AI Integration / Image Analysis | HTP 데이터셋 구축 및 객체 클래스 재정의, YOLOv8 기반 집·나무·사람 객체 탐지 모델 Fine-tuning 및 추론, 객체 탐지 결과 검증 및 후처리 로직 적용, 이미지 분석 결과 리포트 생성 기능 연동 |
+
 ---
 
 ## 주요 기능
@@ -111,7 +114,9 @@ GDAM Backend는 아동 HTP(집-나무-사람) 그림 검사와 PDI 답변을 기
 | RAG / Vector DB | ChromaDB, OpenAI Embedding     |
 | Image Analysis  | YOLOv8, OpenCV, Pillow         |
 | Config          | Pydantic, python-dotenv        |
-| Infra           | AWS EC2, Nginx, HTTPS(Certbot) |
+| Container       | Docker, Docker Compose         |
+| CI/CD           | GitHub Actions                 |
+| Infra           | AWS EC2, Nginx, systemd, HTTPS(Certbot) |
 
 카메라/앨범 이미지 업로드 규격은 [docs/image-upload-api.md](docs/image-upload-api.md),
 앱 직접 그리기 연동 규격은 [docs/canvas-drawing-api.md](docs/canvas-drawing-api.md),
@@ -135,11 +140,40 @@ backend/
 │   └── data/rag/      # RAG용 지식 데이터
 ├── ml_models/yolo/    # YOLO 모델 파일
 ├── scripts/           # DB/RAG 초기화 스크립트
+├── deploy/            # 배포 및 컨테이너 시작 스크립트
 ├── uploads/           # 업로드 이미지 및 분석 결과 저장
+├── .github/workflows/ # 테스트·Docker 빌드·EC2 배포 자동화
+├── Dockerfile
+├── compose.yml
 ├── requirements.txt
 ├── .env.example
 └── README.md
 ```
+
+---
+
+## Docker 적용 범위
+
+Docker는 개발 환경 재현과 배포 가능 이미지 검증에 사용합니다.
+
+* CPU 서버에 맞춘 Python·PyTorch 런타임 이미지 구성
+* 애플리케이션을 비루트(non-root) 사용자로 실행
+* Docker Compose로 Backend와 PostgreSQL을 함께 실행
+* PostgreSQL·업로드 이미지·ChromaDB 데이터를 볼륨으로 보존
+* liveness/readiness 상태 확인 및 안전한 종료 설정
+* Pull Request와 `main` 변경 시 테스트 후 Docker 이미지 빌드 검증
+
+현재 공개 테스트 서버는 검증된 기존 운영 방식을 유지하기 위해
+**Nginx → systemd → Uvicorn** 구조로 실행합니다. 즉, Docker 이미지와 Compose 실행
+환경은 구현·검증되었지만 EC2의 런타임 자체는 아직 컨테이너로 전환하지 않았습니다.
+운영 전환 조건과 절차는 [Docker 실행 가이드](docs/docker.md)에 정리되어 있습니다.
+
+| 환경 | 현재 방식 |
+| --- | --- |
+| 로컬 재현 | Docker Compose: Backend + PostgreSQL |
+| CI | 단위 테스트 후 Docker 이미지 빌드 |
+| 공개 테스트 서버 CD | `main` 통과 커밋을 EC2 systemd 서비스로 자동 배포 |
+| EC2 컨테이너 런타임 | 미전환(별도 마이그레이션 및 롤백 검증 필요) |
 
 ---
 
@@ -198,6 +232,17 @@ PostgreSQL과 Backend를 컨테이너로 함께 실행하려면
 [Docker 실행 가이드](docs/docker.md)를 참고합니다. 이 구성은 로컬·CI 검증용이며
 현재 EC2 systemd 배포를 자동으로 변경하지 않습니다.
 
+### 테스트와 이미지 빌드 확인
+
+```bash
+python -m unittest discover -s tests -v
+docker build -t gdam-backend:local .
+```
+
+GitHub Actions는 Pull Request마다 테스트와 Docker 이미지 빌드를 수행합니다.
+`main`에 반영되면 테스트 통과 후 공개 테스트 서버 배포까지 자동으로 수행하며,
+Docker 이미지는 현재 레지스트리에 배포하지 않습니다.
+
 ---
 
 ## 주요 환경 변수
@@ -236,14 +281,14 @@ YOLO_HTP_FALLBACK_ENABLED=
 
 ---
 
-## 배포 환경
+## 현재 배포 환경
 
-* AWS EC2 Ubuntu 서버
-* FastAPI + Uvicorn
-* Nginx reverse proxy
-* HTTPS 인증서 적용
+* AWS EC2 Ubuntu 공개 테스트 서버
+* FastAPI + Uvicorn(systemd 서비스)
+* Nginx reverse proxy 및 HTTPS 인증서
 * PostgreSQL 데이터베이스
 * ChromaDB persistent vector store
 * 프론트엔드 배포 주소와 CORS 연동
+* GitHub Actions를 통한 테스트 및 `main` 자동 배포
 
 운영 서버에서는 환경 변수를 별도로 관리하며, `.env`, API Key, DB URL, Secret Key 등 민감정보는 레포지토리에 포함하지 않습니다.
