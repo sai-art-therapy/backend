@@ -7,6 +7,8 @@ from unittest.mock import patch
 
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session
 
 from app.db.session import get_db
 from app.core.dependencies import get_current_user
@@ -17,10 +19,13 @@ from app.routers.shared_reports import (
     router,
     serialize_shared_report,
 )
+from app.models.report_share import ReportShare
 from app.services.report_share_service import (
+    find_active_report_share,
     generate_share_token,
     hash_share_token,
     issue_report_share,
+    revoke_report_shares,
 )
 
 
@@ -129,6 +134,44 @@ class ReportShareTokenTest(unittest.TestCase):
 
         self.assertIs(actual, expected)
         find_share.assert_called_once_with(db, "secret-token")
+
+    def test_new_token_revokes_previous_token_in_database(self):
+        engine = create_engine("sqlite:///:memory:")
+        self.addCleanup(engine.dispose)
+        ReportShare.__table__.create(engine)
+
+        with Session(engine) as db:
+            first_token, _ = issue_report_share(db, report_id=10)
+            db.commit()
+            self.assertIsNotNone(find_active_report_share(db, first_token))
+
+            second_token, _ = issue_report_share(db, report_id=10)
+            db.commit()
+
+            self.assertIsNone(find_active_report_share(db, first_token))
+            self.assertEqual(
+                find_active_report_share(db, second_token).report_id,
+                10,
+            )
+
+    def test_expired_and_explicitly_revoked_tokens_are_rejected(self):
+        engine = create_engine("sqlite:///:memory:")
+        self.addCleanup(engine.dispose)
+        ReportShare.__table__.create(engine)
+
+        with Session(engine) as db:
+            expired_token, expired_share = issue_report_share(db, report_id=10)
+            expired_share.expires_at = datetime.utcnow() - timedelta(seconds=1)
+            db.commit()
+            self.assertIsNone(find_active_report_share(db, expired_token))
+
+            active_token, _ = issue_report_share(db, report_id=10)
+            db.commit()
+            self.assertIsNotNone(find_active_report_share(db, active_token))
+
+            self.assertEqual(revoke_report_shares(db, report_id=10), 1)
+            db.commit()
+            self.assertIsNone(find_active_report_share(db, active_token))
 
 
 class ReportShareOwnerRouterTest(unittest.TestCase):
