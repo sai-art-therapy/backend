@@ -138,6 +138,7 @@ celerybeat.pid
 .env
 .env.*
 !.env.example
+!.env.docker.example
 .envrc
 .venv
 env/
@@ -217,6 +218,7 @@ __marimo__/
 .env
 .env.*
 !.env.example
+!.env.docker.example
 
 # Local vector database
 app/db/chroma/
