@@ -3,6 +3,9 @@
 이 구성은 로컬 재현성과 CI 이미지 빌드 검증을 위한 것입니다. 현재 EC2의
 systemd 배포를 자동으로 변경하지 않습니다.
 
+이미지는 CPU 서버 실행을 기준으로 PyTorch와 torchvision의 CPU wheel을 사용해
+불필요한 CUDA 라이브러리를 포함하지 않습니다.
+
 ## 준비
 
 1. Docker Desktop 또는 Docker Engine과 Compose v2를 설치합니다.

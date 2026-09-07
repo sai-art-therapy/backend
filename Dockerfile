@@ -19,6 +19,7 @@ RUN apt-get update \
 
 COPY requirements.txt ./
 RUN python -m pip install --upgrade pip \
+    && python -m pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu \
     && python -m pip install --requirement requirements.txt
 
 RUN groupadd --system --gid 10001 gdam \
