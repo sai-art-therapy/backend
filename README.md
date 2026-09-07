@@ -192,6 +192,12 @@ uvicorn app.main:app --reload
 * API 서버: `http://localhost:8000`
 * Swagger 문서: `http://localhost:8000/docs`
 
+### Docker Compose로 실행
+
+PostgreSQL과 Backend를 컨테이너로 함께 실행하려면
+[Docker 실행 가이드](docs/docker.md)를 참고합니다. 이 구성은 로컬·CI 검증용이며
+현재 EC2 systemd 배포를 자동으로 변경하지 않습니다.
+
 ---
 
 ## 주요 환경 변수
