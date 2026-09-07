@@ -121,6 +121,7 @@ GDAM Backend는 아동 HTP(집-나무-사람) 그림 검사와 PDI 답변을 기
 카메라/앨범 이미지 업로드 규격은 [docs/image-upload-api.md](docs/image-upload-api.md),
 앱 직접 그리기 연동 규격은 [docs/canvas-drawing-api.md](docs/canvas-drawing-api.md),
 로그인 사용자용 리포트 이미지 조회 규격은 [docs/report-image-api.md](docs/report-image-api.md),
+만료형 리포트 공유 연동 규격은 [docs/report-share-api.md](docs/report-share-api.md),
 배포·보안·상태 확인 방법은 [docs/operations.md](docs/operations.md)를 참고합니다.
 
 ---
@@ -265,6 +266,7 @@ CHROMA_HTP_COLLECTION=
 JWT_SECRET_KEY=
 JWT_ALGORITHM=
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES=
+REPORT_SHARE_TOKEN_EXPIRE_HOURS=72
 
 RAG_ADMIN_ENABLED=false
 RAG_ADMIN_TOKEN=

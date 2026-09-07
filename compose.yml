@@ -39,6 +39,7 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY:?Set JWT_SECRET_KEY in .env.docker}
       JWT_ALGORITHM: HS256
       JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-60}
+      REPORT_SHARE_TOKEN_EXPIRE_HOURS: ${REPORT_SHARE_TOKEN_EXPIRE_HOURS:-72}
       YOLO_HTP_HOUSE_WEIGHTS_PATH: /app/ml_models/yolo/house_best.pt
       YOLO_HTP_TREE_WEIGHTS_PATH: /app/ml_models/yolo/tree_best.pt
       YOLO_HTP_PERSON_WEIGHTS_PATH: /app/ml_models/yolo/person_best.pt

@@ -38,6 +38,11 @@ JWT_SECRET_KEY = os.getenv("JWT_SECRET_KEY")
 JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
 JWT_ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRE_MINUTES", "60"))
 
+# 리포트 공유 링크는 짧게 유지하고 서버에서 개별 폐기할 수 있도록 별도 관리합니다.
+REPORT_SHARE_TOKEN_EXPIRE_HOURS = int(
+    os.getenv("REPORT_SHARE_TOKEN_EXPIRE_HOURS", "72")
+)
+
 # 운영 관리자 API는 명시적으로 활성화한 환경에서만 사용합니다.
 RAG_ADMIN_ENABLED = os.getenv("RAG_ADMIN_ENABLED", "false").lower() == "true"
 RAG_ADMIN_TOKEN = os.getenv("RAG_ADMIN_TOKEN")
@@ -64,3 +69,6 @@ if RAG_ADMIN_ENABLED and (not RAG_ADMIN_TOKEN or len(RAG_ADMIN_TOKEN) < 32):
     raise ValueError(
         "RAG_ADMIN_ENABLED=true인 경우 RAG_ADMIN_TOKEN을 32자 이상으로 설정해야 합니다."
     )
+
+if not 1 <= REPORT_SHARE_TOKEN_EXPIRE_HOURS <= 168:
+    raise ValueError("REPORT_SHARE_TOKEN_EXPIRE_HOURS는 1~168시간이어야 합니다.")

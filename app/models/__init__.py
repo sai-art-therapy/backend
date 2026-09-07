@@ -4,6 +4,7 @@ from app.models.htp_test import HtpTest
 from app.models.htp_canvas_drawing import HtpCanvasDrawing
 from app.models.htp_pdi import HtpPdiInteraction
 from app.models.chat import ChatSession, ChatMessage
+from app.models.report_share import ReportShare
 
 __all__ = [
     "User",
@@ -13,4 +14,5 @@ __all__ = [
     "HtpPdiInteraction",
     "ChatSession",
     "ChatMessage",
+    "ReportShare",
 ]

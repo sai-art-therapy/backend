@@ -11,6 +11,7 @@ from app.routers import (
     mypage,
     rag_admin,
     reports,
+    shared_reports,
     tests,
 )
 
@@ -38,6 +39,11 @@ app.include_router(children.router, prefix="/children", tags=["Children"])
 app.include_router(tests.router, prefix="/tests", tags=["Tests"])
 app.include_router(drawings.router, prefix="/tests", tags=["Tests"])
 app.include_router(reports.router, prefix="/reports", tags=["Reports"])
+app.include_router(
+    shared_reports.router,
+    prefix="/shared-reports",
+    tags=["Shared Reports"],
+)
 app.include_router(chat.router, prefix="/api/chat", tags=["Chat"])
 app.include_router(mypage.router, prefix="/mypage", tags=["Mypage"])
 app.include_router(health.router, prefix="/health", tags=["Health"])
