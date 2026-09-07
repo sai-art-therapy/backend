@@ -158,19 +158,20 @@ Docker는 개발 환경 재현과 배포 가능 이미지 검증에 사용합니
 
 * CPU 서버에 맞춘 Python·PyTorch 런타임 이미지 구성
 * 애플리케이션을 비루트(non-root) 사용자로 실행
-* Docker Compose로 Backend와 PostgreSQL을 함께 실행
+* Docker Compose로 Backend와 PostgreSQL을 함께 실행할 수 있도록 구성
 * PostgreSQL·업로드 이미지·ChromaDB 데이터를 볼륨으로 보존
 * liveness/readiness 상태 확인 및 안전한 종료 설정
 * Pull Request와 `main` 변경 시 테스트 후 Docker 이미지 빌드 검증
 
 현재 공개 테스트 서버는 검증된 기존 운영 방식을 유지하기 위해
 **Nginx → systemd → Uvicorn** 구조로 실행합니다. 즉, Docker 이미지와 Compose 실행
-환경은 구현·검증되었지만 EC2의 런타임 자체는 아직 컨테이너로 전환하지 않았습니다.
+환경은 구현되었고 Docker 이미지 빌드는 CI에서 검증되었지만, EC2의 런타임 자체는
+아직 컨테이너로 전환하지 않았습니다.
 운영 전환 조건과 절차는 [Docker 실행 가이드](docs/docker.md)에 정리되어 있습니다.
 
 | 환경 | 현재 방식 |
 | --- | --- |
-| 로컬 재현 | Docker Compose: Backend + PostgreSQL |
+| 로컬 재현 | Docker Compose 구성: Backend + PostgreSQL |
 | CI | 단위 테스트 후 Docker 이미지 빌드 |
 | 공개 테스트 서버 CD | `main` 통과 커밋을 EC2 systemd 서비스로 자동 배포 |
 | EC2 컨테이너 런타임 | 미전환(별도 마이그레이션 및 롤백 검증 필요) |
