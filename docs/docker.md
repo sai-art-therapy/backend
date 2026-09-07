@@ -64,6 +64,10 @@ CI는 실제 YOLO 모델 파일과 외부 API Secret을 사용하지 않습니�
 - ChromaDB: `chroma_data`
 - YOLO 모델: 호스트의 `./ml_models`를 읽기 전용으로 연결
 
+PostgreSQL 18 이상 공식 이미지는 메이저 버전별 데이터 디렉터리를 사용하므로
+볼륨을 `/var/lib/postgresql`에 연결합니다. 이미지 메이저 버전을 올릴 때는 기존
+볼륨을 그대로 연결하지 말고 `pg_upgrade` 또는 백업·복구 절차를 먼저 준비합니다.
+
 `docker compose down`은 컨테이너만 내리고 볼륨을 보존합니다.
 `docker compose down --volumes`는 로컬 DB와 업로드 데이터를 삭제하므로 필요한
 경우에만 실행합니다.
