@@ -14,9 +14,10 @@ services:
       timeout: 5s
       retries: 12
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
 
   backend:
+    image: ${BACKEND_IMAGE:-gdam-backend:local}
     build:
       context: .
       dockerfile: Dockerfile
