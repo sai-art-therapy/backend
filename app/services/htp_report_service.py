@@ -1,9 +1,14 @@
 from datetime import date
+import logging
 import re
 from app.models.htp_pdi import HtpPdiInteraction
 from app.models.htp_test import HtpTest
 from app.services.openai_service import generate_json_answer
 from app.services.htp_rag_service import search_htp_knowledge_for_report
+
+
+logger = logging.getLogger(__name__)
+REPORT_GENERATION_MAX_ATTEMPTS = 3
 
 
 def _iter_report_text(value):
@@ -68,6 +73,43 @@ def _assert_report_grounding(report_json: dict, visual: dict, age_by_year: int |
             relation_text, left, right, ("겹쳐", "겹침", "중첩")
         ):
             raise ValueError(f"report contradicted {key}.overlap=false")
+
+
+def _sanitize_report_grounding(value, visual: dict, age_by_year: int | None = None):
+    """Remove only sentences that fail the deterministic grounding checks.
+
+    This is the final safety net after regeneration attempts. It preserves the
+    rest of the generated report instead of failing the whole request.
+    """
+    if isinstance(value, str):
+        sentences = re.findall(r"[^.!?\n]+(?:[.!?]+|$)", value)
+        grounded_sentences = []
+        for sentence in sentences:
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+            try:
+                _assert_report_grounding(
+                    {"text": sentence},
+                    visual,
+                    age_by_year,
+                )
+            except ValueError:
+                continue
+            grounded_sentences.append(sentence)
+        return " ".join(grounded_sentences)
+    if isinstance(value, dict):
+        return {
+            key: _sanitize_report_grounding(item, visual, age_by_year)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        sanitized_items = [
+            _sanitize_report_grounding(item, visual, age_by_year)
+            for item in value
+        ]
+        return [item for item in sanitized_items if item not in ("", None)]
+    return value
 
 
 def build_pdi_evidence(pdi_interactions: list[HtpPdiInteraction]) -> list[dict]:
@@ -453,8 +495,51 @@ def generate_htp_report(
 - 심리적 의미는 "~와 관련해 참고할 수 있습니다"처럼 가능성 언어로 쓰고 "관찰됩니다/확인됩니다"처럼
   사실화하지 마세요. '발달적 미분화' 같은 전문 용어 대신 자연스러운 표현을 쓰세요.
 """
-    report_json = generate_json_answer(prompt)
-    _assert_report_grounding(report_json, visual, child_context["age_by_year"])
+    report_json = None
+    validation_error = None
+    for attempt in range(1, REPORT_GENERATION_MAX_ATTEMPTS + 1):
+        attempt_prompt = prompt
+        if validation_error is not None:
+            attempt_prompt += f"""
+
+## 이전 출력의 검증 오류
+{validation_error}
+
+이 오류를 일으킨 문장을 반복하지 말고, 그림 분석 결과와 모순되지 않게 전체 JSON을 다시 작성하세요.
+"""
+
+        report_json = generate_json_answer(attempt_prompt)
+        try:
+            _assert_report_grounding(
+                report_json,
+                visual,
+                child_context["age_by_year"],
+            )
+            break
+        except ValueError as exc:
+            validation_error = exc
+            logger.warning(
+                "HTP report grounding failed on attempt %s/%s: %s",
+                attempt,
+                REPORT_GENERATION_MAX_ATTEMPTS,
+                exc,
+            )
+    else:
+        logger.error(
+            "HTP report grounding failed after %s attempts; sanitizing unsupported sentences: %s",
+            REPORT_GENERATION_MAX_ATTEMPTS,
+            validation_error,
+        )
+        report_json = _sanitize_report_grounding(
+            report_json,
+            visual,
+            child_context["age_by_year"],
+        )
+        _assert_report_grounding(
+            report_json,
+            visual,
+            child_context["age_by_year"],
+        )
 
     report_json["pdi"] = {
         "status": htp_test.pdi_status,

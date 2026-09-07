@@ -1,7 +1,10 @@
 from datetime import date
 import json
+from pathlib import Path
+from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
 from app.core.dependencies import get_current_user
@@ -11,6 +14,44 @@ from app.models.htp_test import HtpTest
 from app.models.user import User
 
 router = APIRouter()
+
+ReportImageKind = Literal["original", "result"]
+REPORT_IMAGE_FIELDS = {
+    "original": "original_image_path",
+    "result": "result_image_path",
+}
+REPORT_IMAGE_MEDIA_TYPES = {
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".png": "image/png",
+    ".webp": "image/webp",
+}
+
+
+def _report_image_url(report_id: int, image_kind: ReportImageKind, image_path: str | None):
+    if not image_path:
+        return None
+    return f"/reports/{report_id}/images/{image_kind}"
+
+
+def _resolve_report_image_path(image_path: str) -> Path | None:
+    """Resolve a stored image path without allowing files outside uploads/."""
+    try:
+        upload_root = Path("uploads").resolve()
+        candidate = Path(image_path)
+        if not candidate.is_absolute():
+            candidate = Path.cwd() / candidate
+        resolved = candidate.resolve()
+    except (OSError, RuntimeError):
+        return None
+
+    if upload_root not in resolved.parents:
+        return None
+    if resolved.suffix.lower() not in REPORT_IMAGE_MEDIA_TYPES:
+        return None
+    if not resolved.is_file():
+        return None
+    return resolved
 
 
 def calculate_korean_age(birth_year: int) -> int:
@@ -96,6 +137,11 @@ def serialize_report_list_item(
         "summary_text": report.summary_text,
         "main_emotion": report.main_emotion,
         "result_image_path": report.result_image_path,
+        "result_image_url": _report_image_url(
+            report.id,
+            "result",
+            report.result_image_path,
+        ),
         "analysis_mode": report_json.get("summary", {}).get("analysis_mode"),
         "pdi_used": report_json.get("summary", {}).get("pdi_used"),
         "confidence_level": report_json.get("summary", {}).get("confidence_level"),
@@ -160,6 +206,16 @@ def serialize_report_detail(
         "images": {
             "original_image_path": report.original_image_path,
             "result_image_path": report.result_image_path,
+            "original_image_url": _report_image_url(
+                report.id,
+                "original",
+                report.original_image_path,
+            ),
+            "result_image_url": _report_image_url(
+                report.id,
+                "result",
+                report.result_image_path,
+            ),
         },
         "analysis": {
             "yolo_result_json": report.yolo_result_json,
@@ -214,6 +270,60 @@ def get_reports(
         )
 
     return response
+
+
+@router.get(
+    "/{report_id}/images/{image_kind}",
+    summary="검사 리포트 이미지 조회",
+    response_class=FileResponse,
+    responses={
+        200: {
+            "content": {
+                "image/jpeg": {},
+                "image/png": {},
+                "image/webp": {},
+            },
+            "description": "로그인 사용자가 소유한 리포트 이미지",
+        },
+        404: {"description": "리포트 또는 이미지가 없거나 접근할 수 없음"},
+    },
+)
+def get_report_image(
+    report_id: int,
+    image_kind: ReportImageKind,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    report = (
+        db.query(HtpTest)
+        .filter(
+            HtpTest.id == report_id,
+            HtpTest.user_id == current_user.id,
+        )
+        .first()
+    )
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="리포트를 찾을 수 없습니다.",
+        )
+
+    image_path = getattr(report, REPORT_IMAGE_FIELDS[image_kind])
+    resolved_path = _resolve_report_image_path(image_path) if image_path else None
+    if resolved_path is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="리포트 이미지를 찾을 수 없습니다.",
+        )
+
+    return FileResponse(
+        path=resolved_path,
+        media_type=REPORT_IMAGE_MEDIA_TYPES[resolved_path.suffix.lower()],
+        headers={
+            "Cache-Control": "private, max-age=300",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 
 @router.get("/{report_id}", summary="검사 리포트 상세 조회")

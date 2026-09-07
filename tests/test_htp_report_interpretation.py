@@ -56,9 +56,41 @@ class HtpReportInterpretationTests(unittest.TestCase):
         self.assertIn("summary.disclaimer에", prompt)
         self.assertIn("touching=false", prompt)
         for bad in ("문이 열려 있습니다.", "집과 사람이 서로 접촉하고 있습니다."):
-            with self.subTest(bad=bad), patch.object(report, "generate_json_answer", return_value={"summary": bad}):
-                with self.assertRaises(ValueError):
-                    report.generate_htp_report(test, [], [])
+            generated = {"summary": f"{bad} 안전하게 확인된 표현입니다."}
+            with self.subTest(bad=bad), patch.object(
+                report,
+                "generate_json_answer",
+                return_value=generated,
+            ) as generate:
+                result = report.generate_htp_report(test, [], [])
+            self.assertEqual(generate.call_count, report.REPORT_GENERATION_MAX_ATTEMPTS)
+            self.assertNotIn(bad, result["summary"])
+            self.assertIn("안전하게 확인된 표현입니다.", result["summary"])
+
+    def test_grounding_error_is_sent_back_for_regeneration(self):
+        test = SimpleNamespace(
+            visual_features_json=visual_fixture(),
+            child=None,
+            pdi_status="skipped",
+            result_image_path=None,
+            yolo_result_json={},
+        )
+        generated = [
+            {"summary": "문이 열려 있습니다."},
+            {"summary": "문이 그림에 표현되어 있습니다."},
+        ]
+
+        with patch.object(
+            report,
+            "generate_json_answer",
+            side_effect=generated,
+        ) as generate:
+            result = report.generate_htp_report(test, [], [])
+
+        self.assertEqual(generate.call_count, 2)
+        self.assertEqual(result["summary"], "문이 그림에 표현되어 있습니다.")
+        self.assertIn("이전 출력의 검증 오류", generate.call_args.args[0])
+        self.assertIn("unsupported door state", generate.call_args.args[0])
 
     def test_pdi_is_provided_as_attributed_support_for_visual_interpretation(self):
         test = SimpleNamespace(visual_features_json=visual_fixture(), child=None, pdi_status="completed",
@@ -82,9 +114,14 @@ class HtpReportInterpretationTests(unittest.TestCase):
             result = report.generate_htp_report(test, [], [])
         self.assertEqual(result["relationship_analysis"], generated["relationship_analysis"])
         for text in ("집과 사람이 맞닿아 있습니다.", "집과 사람이 겹쳐 있습니다."):
-            with self.subTest(text=text), patch.object(report, "generate_json_answer", return_value={"summary": text}):
-                with self.assertRaises(ValueError):
-                    report.generate_htp_report(test, [], [])
+            with self.subTest(text=text), patch.object(
+                report,
+                "generate_json_answer",
+                return_value={"summary": text},
+            ) as generate:
+                result = report.generate_htp_report(test, [], [])
+            self.assertEqual(generate.call_count, report.REPORT_GENERATION_MAX_ATTEMPTS)
+            self.assertEqual(result["summary"], "")
 
     def test_composition_does_not_supply_unmeasured_part_attributes_or_missing_objects(self):
         visual = visual_fixture()
