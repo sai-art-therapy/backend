@@ -161,18 +161,19 @@ Docker는 개발 환경 재현과 배포 가능 이미지 검증에 사용합니
 * Docker Compose로 Backend와 PostgreSQL을 함께 실행할 수 있도록 구성
 * PostgreSQL·업로드 이미지·ChromaDB 데이터를 볼륨으로 보존
 * liveness/readiness 상태 확인 및 안전한 종료 설정
-* Pull Request와 `main` 변경 시 테스트 후 Docker 이미지 빌드 검증
+* Pull Request와 `main` 변경 시 Docker 이미지 빌드 및 Compose 런타임 검증
+* CI에서 비루트 사용자·PostgreSQL 연결·헬스체크·재시작 동작 확인
 
 현재 공개 테스트 서버는 검증된 기존 운영 방식을 유지하기 위해
 **Nginx → systemd → Uvicorn** 구조로 실행합니다. 즉, Docker 이미지와 Compose 실행
-환경은 구현되었고 Docker 이미지 빌드는 CI에서 검증되었지만, EC2의 런타임 자체는
-아직 컨테이너로 전환하지 않았습니다.
+환경은 구현되었고 Docker 이미지 빌드와 Compose 런타임은 CI에서 검증하지만,
+EC2의 런타임 자체는 아직 컨테이너로 전환하지 않았습니다.
 운영 전환 조건과 절차는 [Docker 실행 가이드](docs/docker.md)에 정리되어 있습니다.
 
 | 환경 | 현재 방식 |
 | --- | --- |
 | 로컬 재현 | Docker Compose 구성: Backend + PostgreSQL |
-| CI | 단위 테스트 후 Docker 이미지 빌드 |
+| CI | 이미지 빌드 후 Backend·PostgreSQL 기동 및 런타임 스모크 테스트 |
 | 공개 테스트 서버 CD | `main` 통과 커밋을 EC2 systemd 서비스로 자동 배포 |
 | EC2 컨테이너 런타임 | 미전환(별도 마이그레이션 및 롤백 검증 필요) |
 
@@ -240,7 +241,8 @@ python -m unittest discover -s tests -v
 docker build -t gdam-backend:local .
 ```
 
-GitHub Actions는 Pull Request마다 테스트와 Docker 이미지 빌드를 수행합니다.
+GitHub Actions는 Pull Request마다 테스트, Docker 이미지 빌드, Compose 기동,
+데이터베이스 연결·헬스체크·컨테이너 재시작 검증을 수행합니다.
 `main`에 반영되면 테스트 통과 후 공개 테스트 서버 배포까지 자동으로 수행하며,
 Docker 이미지는 현재 레지스트리에 배포하지 않습니다.
 

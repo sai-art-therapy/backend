@@ -1,6 +1,6 @@
 # GDAM Backend Docker 실행
 
-이 구성은 로컬 재현성과 CI 이미지 빌드 검증을 위한 것입니다. 현재 EC2의
+이 구성은 로컬 재현성과 CI 컨테이너 런타임 검증을 위한 것입니다. 현재 EC2의
 systemd 배포를 자동으로 변경하지 않습니다.
 
 이미지는 CPU 서버 실행을 기준으로 PyTorch와 torchvision의 CPU wheel을 사용해
@@ -38,6 +38,24 @@ curl --fail http://127.0.0.1:8000/health/ready
 정상입니다.
 
 Swagger는 `http://127.0.0.1:8000/docs`에서 확인합니다.
+
+## CI 자동 검증
+
+Pull Request와 `main` 변경 시 GitHub Actions에서 다음 과정을 매번 새 환경에서
+수행합니다.
+
+1. 단위 테스트 통과
+2. CPU 전용 Backend 이미지 빌드 및 로컬 Docker 엔진에 적재
+3. Compose 설정 유효성 검사
+4. Backend와 PostgreSQL 컨테이너 기동
+5. Backend가 UID 10001 비루트 사용자로 실행되는지 확인
+6. PostgreSQL 연결과 `/health/live` 응답 확인
+7. 모델 파일이 없는 CI 환경에서 `/health/ready`가 원인을 구분해 503을 반환하는지 확인
+8. Backend 컨테이너 재시작 후 생존 확인
+9. 컨테이너와 CI 전용 볼륨 정리
+
+CI는 실제 YOLO 모델 파일과 외부 API Secret을 사용하지 않습니다. 모델 추론과
+로그인·분석·리포트 전체 E2E는 별도 테스트 환경에서 수행해야 합니다.
 
 ## 데이터 보존
 

@@ -17,6 +17,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   backend:
+    image: ${BACKEND_IMAGE:-gdam-backend:local}
     build:
       context: .
       dockerfile: Dockerfile
