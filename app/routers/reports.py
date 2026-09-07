@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,7 @@ from app.db.session import get_db
 from app.models.child import Child
 from app.models.htp_test import HtpTest
 from app.models.user import User
+from app.services.report_share_service import issue_report_share, revoke_report_shares
 
 router = APIRouter()
 
@@ -324,6 +325,78 @@ def get_report_image(
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@router.post(
+    "/{report_id}/shares",
+    status_code=status.HTTP_201_CREATED,
+    summary="리포트 공유 토큰 발급",
+)
+def create_report_share(
+    report_id: int,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    report = (
+        db.query(HtpTest)
+        .filter(
+            HtpTest.id == report_id,
+            HtpTest.user_id == current_user.id,
+        )
+        .first()
+    )
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="리포트를 찾을 수 없습니다.",
+        )
+    if report.test_status != "completed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="완료된 리포트만 공유할 수 있습니다.",
+        )
+
+    token, share = issue_report_share(db, report.id)
+    db.commit()
+
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
+    return {
+        "share_token": token,
+        "token_type": "Share",
+        "expires_at": share.expires_at,
+    }
+
+
+@router.delete(
+    "/{report_id}/shares",
+    summary="리포트 공유 링크 폐기",
+)
+def revoke_report_share(
+    report_id: int,
+    response: Response,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    report = (
+        db.query(HtpTest)
+        .filter(
+            HtpTest.id == report_id,
+            HtpTest.user_id == current_user.id,
+        )
+        .first()
+    )
+    if report is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="리포트를 찾을 수 없습니다.",
+        )
+
+    revoked_count = revoke_report_shares(db, report.id)
+    db.commit()
+    response.headers["Cache-Control"] = "no-store"
+    return {"revoked": revoked_count > 0}
 
 
 @router.get("/{report_id}", summary="검사 리포트 상세 조회")

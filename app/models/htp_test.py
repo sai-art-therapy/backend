@@ -67,6 +67,12 @@ class HtpTest(Base):
         passive_deletes=True,
         uselist=False,
     )
+    shares = relationship(
+        "ReportShare",
+        back_populates="report",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
     pdi_interactions = relationship(
         "HtpPdiInteraction",
